@@ -423,7 +423,7 @@ and the CMake option names are given in the table below. Some backends may
 require additional parameters to be set. See the relevant section below for
 additional guidance. The target architectures must be specified with
 <code class="docutils literal notranslate"><span class="pre">HIP_TARGETS</span></code>. See the <a class="reference external" href="https://github.com/AdaptiveCpp/AdaptiveCpp/blob/develop/doc/using-hipsycl.md#adaptivecpp-targets-specification">AdaptiveCpp documentation</a>.</p>
-<p>If a backend library supports multiple domains (i.e. BLAS, RNG), it may be
+<p>If a backend library supports multiple domains (i.e. BLAS, DFT, RNG), it may be
 desirable to only enable selected domains. For this, the <code class="docutils literal notranslate"><span class="pre">TARGET_DOMAINS</span></code>
 variable should be set. For further details, see <span class="xref std std-ref">_build_target_domains</span>.</p>
 <p>By default, the library also additionally builds examples and tests. These can
@@ -448,19 +448,27 @@ information.</p>
 <td><p>True, False</p></td>
 <td><p>False</p></td>
 </tr>
-<tr class="row-even"><td><p>ENABLE_CURAND_BACKEND</p></td>
+<tr class="row-even"><td><p>ENABLE_CUFFT_BACKEND</p></td>
 <td><p>True, False</p></td>
 <td><p>False</p></td>
 </tr>
-<tr class="row-odd"><td><p>ENABLE_NETLIB_BACKEND</p></td>
+<tr class="row-odd"><td><p>ENABLE_CURAND_BACKEND</p></td>
 <td><p>True, False</p></td>
 <td><p>False</p></td>
 </tr>
-<tr class="row-even"><td><p>ENABLE_ARMPL_BACKEND</p></td>
+<tr class="row-even"><td><p>ENABLE_NETLIB_BACKEND</p></td>
 <td><p>True, False</p></td>
 <td><p>False</p></td>
 </tr>
-<tr class="row-odd"><td><p>ENABLE_ROCBLAS_BACKEND</p></td>
+<tr class="row-odd"><td><p>ENABLE_ARMPL_BACKEND</p></td>
+<td><p>True, False</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-even"><td><p>ENABLE_ROCBLAS_BACKEND</p></td>
+<td><p>True, False</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-odd"><td><p>ENABLE_ROCFFT_BACKEND</p></td>
 <td><p>True, False</p></td>
 <td><p>False</p></td>
 </tr>
@@ -481,7 +489,7 @@ information.</p>
 <td><p>True</p></td>
 </tr>
 <tr class="row-even"><td><p>TARGET_DOMAINS (list)</p></td>
-<td><p>blas, rng</p></td>
+<td><p>blas, dft, rng</p></td>
 <td><p>All supported domains</p></td>
 </tr>
 </tbody>
@@ -493,8 +501,8 @@ information.</p>
 <h2>Backends<a class="headerlink" href="#backends" title="Link to this heading">#</a></h2>
 <section id="building-for-cuda">
 <span id="build-for-cuda-adaptivecpp"></span><h3>Building for CUDA<a class="headerlink" href="#building-for-cuda" title="Link to this heading">#</a></h3>
-<p>The CUDA backends can be enabled with <code class="docutils literal notranslate"><span class="pre">ENABLE_CUBLAS_BACKEND</span></code> and
-<code class="docutils literal notranslate"><span class="pre">ENABLE_CURAND_BACKEND</span></code>.</p>
+<p>The CUDA backends can be enabled with <code class="docutils literal notranslate"><span class="pre">ENABLE_CUBLAS_BACKEND</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ENABLE_CUFFT_BACKEND</span></code> and <code class="docutils literal notranslate"><span class="pre">ENABLE_CURAND_BACKEND</span></code>.</p>
 <p>The target architecture must be set using the <code class="docutils literal notranslate"><span class="pre">HIPSYCL_TARGETS</span></code> parameter. For
 example, to target a Nvidia A100 (Ampere architecture), set
 <code class="docutils literal notranslate"><span class="pre">-DHIPSYCL_TARGETS=cuda:sm_80</span></code>, where the figure <code class="docutils literal notranslate"><span class="pre">80</span></code> corresponds to a CUDA
@@ -506,8 +514,8 @@ the CUDA libraries should be found automatically by CMake.</p>
 </section>
 <section id="building-for-rocm">
 <span id="build-for-rocm-adaptivecpp"></span><h3>Building for ROCm<a class="headerlink" href="#building-for-rocm" title="Link to this heading">#</a></h3>
-<p>The ROCm backends can be enabled with <code class="docutils literal notranslate"><span class="pre">ENABLE_ROCBLAS_BACKEND</span></code> and
-<code class="docutils literal notranslate"><span class="pre">ENABLE_ROCRAND_BACKEND</span></code>.</p>
+<p>The ROCm backends can be enabled with <code class="docutils literal notranslate"><span class="pre">ENABLE_ROCBLAS_BACKEND</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ENABLE_ROCFFT_BACKEND</span></code> and <code class="docutils literal notranslate"><span class="pre">ENABLE_ROCRAND_BACKEND</span></code>.</p>
 <p>The target architecture must be set using the <code class="docutils literal notranslate"><span class="pre">HIPSYCL_TARGETS</span></code> parameter. See
 the <a class="reference external" href="https://github.com/AdaptiveCpp/AdaptiveCpp/blob/develop/doc/using-hipsycl.md#adaptivecpp-targets-specification">AdaptiveCpp documentation</a>.
 For example, to target the MI200 series, set <code class="docutils literal notranslate"><span class="pre">-DHIPSYCL_TARGETS=hip:gfx90a</span></code>.

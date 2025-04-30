@@ -57,7 +57,7 @@ additional guidance. The target architectures must be specified with
 ``HIP_TARGETS``. See the `AdaptiveCpp documentation
 <https://github.com/AdaptiveCpp/AdaptiveCpp/blob/develop/doc/using-hipsycl.md#adaptivecpp-targets-specification>`_.
 
-If a backend library supports multiple domains (i.e. BLAS, RNG), it may be
+If a backend library supports multiple domains (i.e. BLAS, DFT, RNG), it may be
 desirable to only enable selected domains. For this, the ``TARGET_DOMAINS``
 variable should be set. For further details, see :ref:`_build_target_domains`.
 
@@ -81,6 +81,9 @@ The most important supported build options are:
    * - ENABLE_CUBLAS_BACKEND
      - True, False
      - False     
+   * - ENABLE_CUFFT_BACKEND
+     - True, False
+     - False
    * - ENABLE_CURAND_BACKEND
      - True, False
      - False     
@@ -93,6 +96,9 @@ The most important supported build options are:
    * - ENABLE_ROCBLAS_BACKEND
      - True, False
      - False     
+   * - ENABLE_ROCFFT_BACKEND
+     - True, False
+     - False
    * - ENABLE_ROCRAND_BACKEND
      - True, False
      - False     
@@ -106,7 +112,7 @@ The most important supported build options are:
      - True, False
      - True      
    * - TARGET_DOMAINS (list)
-     - blas, rng
+     - blas, dft, rng
      - All supported domains
 
 Some additional build options are given in
@@ -120,8 +126,8 @@ Backends
 Building for CUDA
 ~~~~~~~~~~~~~~~~~
 
-The CUDA backends can be enabled with ``ENABLE_CUBLAS_BACKEND`` and
-``ENABLE_CURAND_BACKEND``.
+The CUDA backends can be enabled with ``ENABLE_CUBLAS_BACKEND``,
+``ENABLE_CUFFT_BACKEND`` and ``ENABLE_CURAND_BACKEND``.
 
 The target architecture must be set using the ``HIPSYCL_TARGETS`` parameter. For
 example, to target a Nvidia A100 (Ampere architecture), set
@@ -140,8 +146,8 @@ the CUDA libraries should be found automatically by CMake.
 Building for ROCm
 ~~~~~~~~~~~~~~~~~
 
-The ROCm backends can be enabled with ``ENABLE_ROCBLAS_BACKEND`` and
-``ENABLE_ROCRAND_BACKEND``.
+The ROCm backends can be enabled with ``ENABLE_ROCBLAS_BACKEND``,
+``ENABLE_ROCFFT_BACKEND`` and ``ENABLE_ROCRAND_BACKEND``.
 
 The target architecture must be set using the ``HIPSYCL_TARGETS`` parameter. See
 the `AdaptiveCpp documentation
