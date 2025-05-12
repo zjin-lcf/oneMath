@@ -115,6 +115,9 @@ The most important supported build options are:
    * - ENABLE_ARMPL_OMP
      - True, False
      - True
+   * - ENABLE_ARMPL_OPENRNG
+     - True, False
+     - False
    * - ENABLE_ROCBLAS_BACKEND
      - True, False
      - False     
@@ -333,6 +336,14 @@ ArmPL is to be used, ``-DARMPL_ROOT=<armpl_install_prefix>`` can be used.
 
 Default behavior is to used the OpenMP flavor of ArmPL libraries, this can be
 changed using the ``-DENABLE_ARMPL_OMP=True/False`` flag.
+
+ArmPL bundles the OpenRNG project as its implementation of the random number
+generator interface. The oneMath ArmPL backend for the RNG domain can be built
+with the open-source version of OpenRNG in place of ArmPL. This build supports
+both aarch64 and x86_64 CPU architectures. When building oneMath with
+`-DTARGET_DOMAINS=rng -DENABLE_ARMPL_BACKEND=True` while ArmPL binaries are not
+available, the build will switch to using OpenRNG by default. The use of OpenRNG
+can also be forced with the option `-DENABLE_ARMPL_OPENRNG=True`.
 
 .. _build_additional_options_dpcpp:
 
