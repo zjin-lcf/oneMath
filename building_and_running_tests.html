@@ -388,7 +388,7 @@ cmake<span class="w"> </span>-DCMAKE_INSTALL_PREFIX<span class="o">=</span>~/lap
 cmake<span class="w"> </span>--build<span class="w"> </span>.<span class="w"> </span>-j<span class="w"> </span>--target<span class="w"> </span>install
 </pre></div>
 </div>
-<p>and then used in oneMath by setting <code class="docutils literal notranslate"><span class="pre">-REF_BLAS_ROOT=/path/to/lapack/install</span></code>
+<p>and then used in oneMath by setting <code class="docutils literal notranslate"><span class="pre">-DREF_BLAS_ROOT=/path/to/lapack/install</span></code>
 and <code class="docutils literal notranslate"><span class="pre">-DREF_LAPACK_ROOT=/path/to/lapack/install</span></code>.</p>
 <p>You can re-run tests without re-building the entire project.</p>
 <p>To run the tests, either run test binaries individually, or use <code class="docutils literal notranslate"><span class="pre">ctest</span></code> CMake test driver program.</p>
