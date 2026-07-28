@@ -41,6 +41,7 @@ inline void gebrd(const char* func_name, Func func, sycl::queue& queue, std::int
     if (m < n)
         throw unimplemented("lapack", "gebrd", "cusolver gebrd does not support m < n");
 
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto d_acc = d.template get_access<sycl::access::mode::write>(cgh);
@@ -48,6 +49,7 @@ inline void gebrd(const char* func_name, Func func, sycl::queue& queue, std::int
         auto tauq_acc = tauq.template get_access<sycl::access::mode::write>(cgh);
         auto taup_acc = taup.template get_access<sycl::access::mode::write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType_A*>(a_acc);
@@ -56,11 +58,13 @@ inline void gebrd(const char* func_name, Func func, sycl::queue& queue, std::int
             auto tauq_ = sc.get_mem<cuDataType_A*>(tauq_acc);
             auto taup_ = sc.get_mem<cuDataType_A*>(taup_acc);
             auto scratch_ = sc.get_mem<cuDataType_A*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, a_, lda, d_, e_, tauq_,
-                                       taup_, scratch_, scratchpad_size, nullptr);
+                                       taup_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define GEBRD_LAUNCHER(TYPE_A, TYPE_B, CUSOLVER_ROUTINE)                                    \
@@ -107,20 +111,24 @@ inline void geqrf(const char* func_name, Func func, sycl::queue& queue, std::int
                   sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, a_, lda, tau_, scratch_,
-                                       scratchpad_size, nullptr);
+                                       scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define GEQRF_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                            \
@@ -470,20 +478,24 @@ inline void orgbr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::read>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_generate(vec), m, n,
-                                       k, a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       k, a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define ORGBR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                   \
@@ -505,20 +517,24 @@ inline void orgqr(const char* func_name, Func func, sycl::queue& queue, std::int
                   sycl::buffer<T>& tau, sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::read>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, k, a_, lda, tau_,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define ORGQR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                              \
@@ -540,20 +556,24 @@ inline void orgtr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::read>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_fill_mode(uplo), n,
-                                       a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define ORGTR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                     \
@@ -577,24 +597,28 @@ inline void ormtr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, ldc, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::read_write>(cgh);
         auto c_acc = c.template get_access<sycl::access::mode::read_write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto c_ = sc.get_mem<cuDataType*>(c_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_fill_mode(uplo), get_cublas_operation(trans), m,
                                        n, a_, lda, tau_, c_, ldc, scratch_, scratchpad_size,
-                                       nullptr);
+                                       devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define ORMTR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                     \
@@ -632,23 +656,27 @@ inline void ormqr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   std::int64_t ldc, sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, ldc, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::read>(cgh);
         auto c_acc = c.template get_access<sycl::access::mode::read_write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto c_ = sc.get_mem<cuDataType*>(c_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_operation(trans), m, n, k, a_, lda, tau_, c_, ldc,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define ORMQR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                     \
@@ -999,20 +1027,24 @@ inline void ungbr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_generate(vec), m, n,
-                                       k, a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       k, a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define UNGBR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                   \
@@ -1034,20 +1066,24 @@ inline void ungqr(const char* func_name, Func func, sycl::queue& queue, std::int
                   sycl::buffer<T>& tau, sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, k, a_, lda, tau_,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define UNGQR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                              \
@@ -1069,20 +1105,24 @@ inline void ungtr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_fill_mode(uplo), n,
-                                       a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define UNGTR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                     \
@@ -1120,23 +1160,27 @@ inline void unmqr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   std::int64_t ldc, sycl::buffer<T>& scratchpad, std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::write>(cgh);
         auto c_acc = c.template get_access<sycl::access::mode::read_write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto c_ = sc.get_mem<cuDataType*>(c_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_operation(trans), m, n, k, a_, lda, tau_, c_, ldc,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define UNMQR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                     \
@@ -1161,24 +1205,28 @@ inline void unmtr(const char* func_name, Func func, sycl::queue& queue, oneapi::
                   std::int64_t scratchpad_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, ldc, scratchpad_size);
+    sycl::buffer<int> devInfo{ 1 };
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
         auto tau_acc = tau.template get_access<sycl::access::mode::write>(cgh);
         auto c_acc = c.template get_access<sycl::access::mode::read_write>(cgh);
         auto scratch_acc = scratchpad.template get_access<sycl::access::mode::read_write>(cgh);
+        auto devInfo_acc = devInfo.get_access<sycl::access::mode::write>(cgh);
         onemath_cusolver_host_task(cgh, queue, [=](CusolverScopedContextHandler& sc) {
             auto handle = sc.get_handle(queue);
             auto a_ = sc.get_mem<cuDataType*>(a_acc);
             auto tau_ = sc.get_mem<cuDataType*>(tau_acc);
             auto c_ = sc.get_mem<cuDataType*>(c_acc);
             auto scratch_ = sc.get_mem<cuDataType*>(scratch_acc);
+            auto devInfo_ = sc.get_mem<int*>(devInfo_acc);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_fill_mode(uplo), get_cublas_operation(trans), m,
                                        n, a_, lda, tau_, c_, ldc, scratch_, scratchpad_size,
-                                       nullptr);
+                                       devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
 }
 
 #define UNMTR_LAUNCHER(TYPE, CUSOLVER_ROUTINE)                                                     \
@@ -1210,6 +1258,7 @@ inline sycl::event gebrd(const char* func_name, Func func, sycl::queue& queue, s
     if (m < n)
         throw unimplemented("lapack", "gebrd", "cusolver gebrd does not support m < n");
 
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1223,11 +1272,14 @@ inline sycl::event gebrd(const char* func_name, Func func, sycl::queue& queue, s
             auto tauq_ = reinterpret_cast<cuDataType_A*>(tauq);
             auto taup_ = reinterpret_cast<cuDataType_A*>(taup);
             auto scratch_ = reinterpret_cast<cuDataType_A*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, a_, lda, d_, e_, tauq_,
-                                       taup_, scratch_, scratchpad_size, nullptr);
+                                       taup_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -1275,6 +1327,7 @@ inline sycl::event geqrf(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1285,11 +1338,14 @@ inline sycl::event geqrf(const char* func_name, Func func, sycl::queue& queue, s
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, a_, lda, tau_, scratch_,
-                                       scratchpad_size, nullptr);
+                                       scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -1662,6 +1718,7 @@ inline sycl::event orgbr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1672,11 +1729,14 @@ inline sycl::event orgbr(const char* func_name, Func func, sycl::queue& queue,
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_generate(vec), m, n,
-                                       k, a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       k, a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -1701,6 +1761,7 @@ inline sycl::event orgqr(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1711,11 +1772,14 @@ inline sycl::event orgqr(const char* func_name, Func func, sycl::queue& queue, s
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, k, a_, lda, tau_,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -1739,6 +1803,7 @@ inline sycl::event orgtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1749,11 +1814,14 @@ inline sycl::event orgtr(const char* func_name, Func func, sycl::queue& queue,
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_fill_mode(uplo), n,
-                                       a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -1779,6 +1847,7 @@ inline sycl::event ormtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, ldc, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1790,13 +1859,16 @@ inline sycl::event ormtr(const char* func_name, Func func, sycl::queue& queue,
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto c_ = reinterpret_cast<cuDataType*>(c);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_fill_mode(uplo), get_cublas_operation(trans), m,
                                        n, a_, lda, tau_, c_, ldc, scratch_, scratchpad_size,
-                                       nullptr);
+                                       devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -1836,6 +1908,7 @@ inline sycl::event ormqr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, ldc, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1847,12 +1920,15 @@ inline sycl::event ormqr(const char* func_name, Func func, sycl::queue& queue,
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto c_ = reinterpret_cast<cuDataType*>(c);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_operation(trans), m, n, k, a_, lda, tau_, c_, ldc,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -2234,6 +2310,7 @@ inline sycl::event ungbr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2244,11 +2321,14 @@ inline sycl::event ungbr(const char* func_name, Func func, sycl::queue& queue,
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_generate(vec), m, n,
-                                       k, a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       k, a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -2273,6 +2353,7 @@ inline sycl::event ungqr(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2283,11 +2364,14 @@ inline sycl::event ungqr(const char* func_name, Func func, sycl::queue& queue, s
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, m, n, k, a_, lda, tau_,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -2311,6 +2395,7 @@ inline sycl::event ungtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2321,11 +2406,14 @@ inline sycl::event ungtr(const char* func_name, Func func, sycl::queue& queue,
             auto a_ = reinterpret_cast<cuDataType*>(a);
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_fill_mode(uplo), n,
-                                       a_, lda, tau_, scratch_, scratchpad_size, nullptr);
+                                       a_, lda, tau_, scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -2365,6 +2453,7 @@ inline sycl::event unmqr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2376,12 +2465,15 @@ inline sycl::event unmqr(const char* func_name, Func func, sycl::queue& queue,
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto c_ = reinterpret_cast<cuDataType*>(c);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_operation(trans), m, n, k, a_, lda, tau_, c_, ldc,
-                                       scratch_, scratchpad_size, nullptr);
+                                       scratch_, scratchpad_size, devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
@@ -2409,6 +2501,7 @@ inline sycl::event unmtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, ldc, scratchpad_size);
+    int* devInfo = (int*)malloc_device(sizeof(int), queue);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2420,13 +2513,16 @@ inline sycl::event unmtr(const char* func_name, Func func, sycl::queue& queue,
             auto tau_ = reinterpret_cast<cuDataType*>(tau);
             auto c_ = reinterpret_cast<cuDataType*>(c);
             auto scratch_ = reinterpret_cast<cuDataType*>(scratchpad);
+            auto devInfo_ = reinterpret_cast<int*>(devInfo);
             cusolverStatus_t err;
             cusolver_native_named_func(func_name, func, err, handle, get_cublas_side_mode(side),
                                        get_cublas_fill_mode(uplo), get_cublas_operation(trans), m,
                                        n, a_, lda, tau_, c_, ldc, scratch_, scratchpad_size,
-                                       nullptr);
+                                       devInfo_);
         });
     });
+    lapack_info_check(queue, devInfo, __func__, func_name);
+    free(devInfo, queue);
     return done;
 }
 
