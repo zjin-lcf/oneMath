@@ -118,7 +118,6 @@ inline void dgmm_batch(const char* func_name, Func func, sycl::queue& queue, sid
                        sycl::buffer<T, 1>& x, int64_t incx, int64_t stride_x, sycl::buffer<T, 1>& c,
                        int64_t ldc, int64_t stride_c, int64_t batch_size) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
-    overflow_check(m, n, lda, ldc, stride_a, stride_x, stride_c, batch_size);
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read>(cgh);
         auto x_acc = x.template get_access<sycl::access::mode::read>(cgh);
@@ -131,9 +130,9 @@ inline void dgmm_batch(const char* func_name, Func func, sycl::queue& queue, sid
             cublasStatus_t err;
             auto mode = get_cublas_side_mode(left_right);
             for (int64_t i = 0; i < batch_size; i++) {
-                cublas_native_named_func(func_name, func, err, handle, mode, (int)m, (int)n,
-                                         a_ + i * stride_a, (int)lda, x_ + i * stride_x, (int)incx,
-                                         c_ + i * stride_c, (int)ldc);
+                cublas_native_named_func(func_name, func, err, handle, mode, m, n,
+                                         a_ + i * stride_a, lda, x_ + i * stride_x, incx,
+                                         c_ + i * stride_c, ldc);
             }
         });
     });
@@ -148,10 +147,10 @@ inline void dgmm_batch(const char* func_name, Func func, sycl::queue& queue, sid
                    incx, stride_x, c, ldc, stride_c, batch_size);                                  \
     }
 
-DGMM_STRIDED_BATCH_LAUNCHER(float, cublasSdgmm)
-DGMM_STRIDED_BATCH_LAUNCHER(double, cublasDdgmm)
-DGMM_STRIDED_BATCH_LAUNCHER(std::complex<float>, cublasCdgmm)
-DGMM_STRIDED_BATCH_LAUNCHER(std::complex<double>, cublasZdgmm)
+DGMM_STRIDED_BATCH_LAUNCHER(float, cublasSdgmm_64)
+DGMM_STRIDED_BATCH_LAUNCHER(double, cublasDdgmm_64)
+DGMM_STRIDED_BATCH_LAUNCHER(std::complex<float>, cublasCdgmm_64)
+DGMM_STRIDED_BATCH_LAUNCHER(std::complex<double>, cublasZdgmm_64)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER
 
@@ -573,7 +572,6 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
                               int64_t stride_c, int64_t batch_size,
                               const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
-    overflow_check(m, n, lda, ldc, stride_a, stride_x, stride_c, batch_size);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -587,9 +585,9 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
             cublasStatus_t err;
             auto mode = get_cublas_side_mode(left_right);
             for (int64_t i = 0; i < batch_size; i++) {
-                cublas_native_named_func(func_name, func, err, handle, mode, (int)m, (int)n,
-                                         a_ + i * stride_a, (int)lda, x_ + i * stride_x, (int)incx,
-                                         c_ + i * stride_c, (int)ldc);
+                cublas_native_named_func(func_name, func, err, handle, mode, m, n,
+                                         a_ + i * stride_a, lda, x_ + i * stride_x, incx,
+                                         c_ + i * stride_c, ldc);
             }
         });
     });
@@ -605,10 +603,10 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
                           stride_a, x, incx, stride_x, c, ldc, stride_c, batch_size, dependencies); \
     }
 
-DGMM_STRIDED_BATCH_LAUNCHER_USM(float, cublasSdgmm)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(double, cublasDdgmm)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<float>, cublasCdgmm)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, cublasZdgmm)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(float, cublasSdgmm_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(double, cublasDdgmm_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<float>, cublasCdgmm_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, cublasZdgmm_64)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER_USM
 
@@ -619,9 +617,6 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
                               int64_t* incx, T** c, int64_t* ldc, int64_t group_count,
                               int64_t* groupsize, const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
-    for (int64_t i = 0; i < group_count; i++) {
-        overflow_check(m[i], n[i], lda[i], ldc[i], groupsize[i]);
-    }
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -637,8 +632,8 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
                     auto a_ = reinterpret_cast<const cuDataType*>(a[offset + j]);
                     auto x_ = reinterpret_cast<const cuDataType*>(x[offset + j]);
                     auto c_ = reinterpret_cast<cuDataType*>(c[offset + j]);
-                    cublas_native_named_func(func_name, func, err, handle, mode, (int)m[i], (int)n[i],
-                                             a_, (int)lda[i], x_, (int)incx[i], c_, (int)ldc[i]);
+                    cublas_native_named_func(func_name, func, err, handle, mode, m[i], n[i], a_,
+                                             lda[i], x_, incx[i], c_, ldc[i]);
                 }
                 offset += groupsize[i];
             }
@@ -656,10 +651,10 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
                           incx, c, ldc, group_count, groupsize, dependencies);                    \
     }
 
-DGMM_GROUP_BATCH_LAUNCHER_USM(float, cublasSdgmm)
-DGMM_GROUP_BATCH_LAUNCHER_USM(double, cublasDdgmm)
-DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<float>, cublasCdgmm)
-DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<double>, cublasZdgmm)
+DGMM_GROUP_BATCH_LAUNCHER_USM(float, cublasSdgmm_64)
+DGMM_GROUP_BATCH_LAUNCHER_USM(double, cublasDdgmm_64)
+DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<float>, cublasCdgmm_64)
+DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<double>, cublasZdgmm_64)
 
 #undef DGMM_GROUP_BATCH_LAUNCHER_USM
 
