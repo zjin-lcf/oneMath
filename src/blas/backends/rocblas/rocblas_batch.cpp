@@ -192,7 +192,6 @@ inline void dgmm_batch(Func func, sycl::queue& queue, side left_right, int64_t m
                        int64_t incx, int64_t stridex, sycl::buffer<T, 1>& c, int64_t ldc,
                        int64_t stridec, int64_t batch_size) {
     using rocDataType = typename RocEquivalentType<T>::Type;
-    overflow_check(m, n, lda, ldc, incx, stridea, stridex, stridec, batch_size);
 
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read>(cgh);
@@ -211,6 +210,7 @@ inline void dgmm_batch(Func func, sycl::queue& queue, side left_right, int64_t m
     });
 }
 
+// Use the ILP64 (_64) rocBLAS entry points so 64-bit dimensions are supported.
 #define DGMM_STRIDED_BATCH_LAUNCHER(TYPE, ROCBLAS_ROUTINE)                                         \
     void dgmm_batch(sycl::queue& queue, side left_right, int64_t m, int64_t n,                     \
                     sycl::buffer<TYPE, 1>& a, int64_t lda, int64_t stridea,                        \
@@ -220,10 +220,10 @@ inline void dgmm_batch(Func func, sycl::queue& queue, side left_right, int64_t m
                    ldc, stridec, batch_size);                                                      \
     }
 
-DGMM_STRIDED_BATCH_LAUNCHER(float, rocblas_sdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER(double, rocblas_ddgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER(std::complex<float>, rocblas_cdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER(std::complex<double>, rocblas_zdgmm_strided_batched)
+DGMM_STRIDED_BATCH_LAUNCHER(float, rocblas_sdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER(double, rocblas_ddgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER(std::complex<float>, rocblas_cdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER(std::complex<double>, rocblas_zdgmm_strided_batched_64)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER
 
@@ -763,7 +763,6 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side left_right, in
                               int64_t stridex, T* c, int64_t ldc, int64_t stridec,
                               int64_t batch_size, const std::vector<sycl::event>& dependencies) {
     using rocDataType = typename RocEquivalentType<T>::Type;
-    overflow_check(m, n, incx, stridea, stridex, stridec, batch_size);
 
     auto done = queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(dependencies);
@@ -791,10 +790,10 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side left_right, in
                           stridex, c, ldc, stridec, batch_size, dependencies);                   \
     }
 
-DGMM_STRIDED_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_strided_batched)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_strided_batched_64)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER_USM
 
@@ -804,9 +803,6 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, i
                               T** c, int64_t* ldc, int64_t group_count, int64_t* group_size,
                               const std::vector<sycl::event>& dependencies) {
     using rocDataType = typename RocEquivalentType<T>::Type;
-    for (int64_t i = 0; i < group_count; i++) {
-        overflow_check(m[i], n[i], lda[i], ldc[i], incx[i], group_size[i]);
-    }
 
     auto done = queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(dependencies);
@@ -819,9 +815,9 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, i
                 auto** a_ = reinterpret_cast<const rocDataType**>(a);
                 auto** x_ = reinterpret_cast<const rocDataType**>(x);
                 auto** c_ = reinterpret_cast<rocDataType**>(c);
-                rocblas_native_func(func, err, handle, get_rocblas_side_mode(left_right[i]),
-                                    (int)m[i], (int)n[i], a_ + offset, (int)lda[i], x_ + offset,
-                                    (int)incx[i], c_ + offset, (int)ldc[i], (int)group_size[i]);
+                rocblas_native_func(func, err, handle, get_rocblas_side_mode(left_right[i]), m[i],
+                                    n[i], a_ + offset, lda[i], x_ + offset, incx[i], c_ + offset,
+                                    ldc[i], group_size[i]);
                 offset += group_size[i];
             }
         });
@@ -839,10 +835,10 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, i
                           group_count, group_size, dependencies);                                 \
     }
 
-DGMM_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_batched)
-DGMM_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_batched)
-DGMM_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_batched)
-DGMM_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_batched)
+DGMM_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_batched_64)
+DGMM_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_batched_64)
+DGMM_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_batched_64)
+DGMM_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_batched_64)
 
 #undef DGMM_BATCH_LAUNCHER
 
@@ -1524,10 +1520,10 @@ inline void dgmm_batch(Func func, sycl::queue& queue, side left_right, int64_t m
                    ldc, stridec, batch_size);                                                      \
     }
 
-DGMM_STRIDED_BATCH_LAUNCHER(float, rocblas_sdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER(double, rocblas_ddgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER(std::complex<float>, rocblas_cdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER(std::complex<double>, rocblas_zdgmm_strided_batched)
+DGMM_STRIDED_BATCH_LAUNCHER(float, rocblas_sdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER(double, rocblas_ddgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER(std::complex<float>, rocblas_cdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER(std::complex<double>, rocblas_zdgmm_strided_batched_64)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER
 
@@ -2010,10 +2006,10 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side left_right, in
                           stridex, c, ldc, stridec, batch_size, dependencies);                   \
     }
 
-DGMM_STRIDED_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_strided_batched)
-DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_strided_batched)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_strided_batched_64)
+DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_strided_batched_64)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER_USM
 
@@ -2041,10 +2037,10 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, i
                           group_count, group_size, dependencies);                                 \
     }
 
-DGMM_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_batched)
-DGMM_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_batched)
-DGMM_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_batched)
-DGMM_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_batched)
+DGMM_BATCH_LAUNCHER_USM(float, rocblas_sdgmm_batched_64)
+DGMM_BATCH_LAUNCHER_USM(double, rocblas_ddgmm_batched_64)
+DGMM_BATCH_LAUNCHER_USM(std::complex<float>, rocblas_cdgmm_batched_64)
+DGMM_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_batched_64)
 
 #undef DGMM_BATCH_LAUNCHER
 
