@@ -45,8 +45,6 @@
 #include "oneapi/math.hpp"
 #include "lapack_common.hpp"
 #include "lapack_test_controller.hpp"
-#include "lapack_accuracy_checks.hpp"
-#include "lapack_reference_wrappers.hpp"
 #include "test_helper.hpp"
 
 namespace {
@@ -106,17 +104,39 @@ bool accuracy(const sycl::device& dev, int64_t n, int64_t lda, int64_t num_runs)
             host_to_device_copy(queue, A_initial.data(), A_dev, A_initial.size());
             queue.wait_and_throw();
 
+            if constexpr (is_buf<data_T>::value) {
+                /* The accessors on the shared buffers order orgqr after geqrf. */
 #ifdef CALL_RT_API
-            oneapi::math::lapack::geqrf(queue, m, n, A_dev, lda, tau_dev, scratchpad_dev,
-                                        geqrf_scratchpad_size);
-            oneapi::math::lapack::orgqr(queue, m, n, k, A_dev, lda, tau_dev, scratchpad_dev,
-                                        orgqr_scratchpad_size);
+                oneapi::math::lapack::geqrf(queue, m, n, A_dev, lda, tau_dev, scratchpad_dev,
+                                            geqrf_scratchpad_size);
+                oneapi::math::lapack::orgqr(queue, m, n, k, A_dev, lda, tau_dev, scratchpad_dev,
+                                            orgqr_scratchpad_size);
 #else
-            TEST_RUN_LAPACK_CT_SELECT(queue, oneapi::math::lapack::geqrf, m, n, A_dev, lda, tau_dev,
-                                      scratchpad_dev, geqrf_scratchpad_size);
-            TEST_RUN_LAPACK_CT_SELECT(queue, oneapi::math::lapack::orgqr, m, n, k, A_dev, lda,
-                                      tau_dev, scratchpad_dev, orgqr_scratchpad_size);
+                TEST_RUN_LAPACK_CT_SELECT(queue, oneapi::math::lapack::geqrf, m, n, A_dev, lda,
+                                          tau_dev, scratchpad_dev, geqrf_scratchpad_size);
+                TEST_RUN_LAPACK_CT_SELECT(queue, oneapi::math::lapack::orgqr, m, n, k, A_dev, lda,
+                                          tau_dev, scratchpad_dev, orgqr_scratchpad_size);
 #endif
+            }
+            else {
+                /* orgqr consumes the factorization and reuses the scratchpad, so on
+                 * a possibly out-of-order queue it has to depend on the geqrf event. */
+                sycl::event geqrf_event;
+#ifdef CALL_RT_API
+                geqrf_event = oneapi::math::lapack::geqrf(queue, m, n, A_dev, lda, tau_dev,
+                                                          scratchpad_dev, geqrf_scratchpad_size);
+                oneapi::math::lapack::orgqr(queue, m, n, k, A_dev, lda, tau_dev, scratchpad_dev,
+                                            orgqr_scratchpad_size,
+                                            std::vector<sycl::event>{ geqrf_event });
+#else
+                TEST_RUN_LAPACK_CT_SELECT(queue, geqrf_event = oneapi::math::lapack::geqrf, m, n,
+                                          A_dev, lda, tau_dev, scratchpad_dev,
+                                          geqrf_scratchpad_size);
+                TEST_RUN_LAPACK_CT_SELECT(queue, oneapi::math::lapack::orgqr, m, n, k, A_dev, lda,
+                                          tau_dev, scratchpad_dev, orgqr_scratchpad_size,
+                                          std::vector<sycl::event>{ geqrf_event });
+#endif
+            }
             queue.wait_and_throw();
 
             device_to_host_copy(queue, A_dev, Q.data(), Q.size());
