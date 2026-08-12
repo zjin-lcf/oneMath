@@ -255,6 +255,16 @@ struct RocmEquivalentType<std::complex<double>> {
 
 /* devinfo */
 
+/* Allocates the device memory rocSOLVER writes its `devInfo` output to. A failed
+ * allocation must not be passed on to rocSOLVER as a null pointer, since that
+ * silently disables the routine's error reporting. */
+inline int* create_devinfo(sycl::queue& queue, const char* func_name, int dev_info_size = 1) {
+    int* devInfo = sycl::malloc_device<int>(dev_info_size, queue);
+    if (!devInfo)
+        throw oneapi::math::device_bad_alloc("lapack", func_name, queue.get_device());
+    return devInfo;
+}
+
 inline int get_rocsolver_devinfo(sycl::queue& queue, sycl::buffer<int>& devInfo) {
     sycl::host_accessor<int, 1, sycl::access::mode::read> dev_info_{ devInfo };
     return dev_info_[0];
