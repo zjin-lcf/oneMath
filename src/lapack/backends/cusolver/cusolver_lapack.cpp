@@ -1258,7 +1258,7 @@ inline sycl::event gebrd(const char* func_name, Func func, sycl::queue& queue, s
     if (m < n)
         throw unimplemented("lapack", "gebrd", "cusolver gebrd does not support m < n");
 
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1327,7 +1327,7 @@ inline sycl::event geqrf(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1378,7 +1378,7 @@ inline sycl::event getrf(const char* func_name, Func func, sycl::queue& queue, s
     std::uint64_t ipiv_size = std::min(n, m);
     int* ipiv32 = (int*)malloc_device(sizeof(int) * ipiv_size, queue);
 
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1515,7 +1515,7 @@ inline sycl::event gesvd(const char* func_name, Func func, sycl::queue& queue,
     using cuDataType_A = typename CudaEquivalentType<T_A>::Type;
     using cuDataType_B = typename CudaEquivalentType<T_B>::Type;
     overflow_check(m, n, lda, ldu, ldvt, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1566,7 +1566,7 @@ inline sycl::event heevd(const char* func_name, Func func, sycl::queue& queue,
     using cuDataType_A = typename CudaEquivalentType<T_A>::Type;
     using cuDataType_B = typename CudaEquivalentType<T_B>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1612,7 +1612,7 @@ inline sycl::event hegvd(const char* func_name, Func func, sycl::queue& queue, s
     using cuDataType_A = typename CudaEquivalentType<T_A>::Type;
     using cuDataType_B = typename CudaEquivalentType<T_B>::Type;
     overflow_check(n, lda, ldb, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1659,7 +1659,7 @@ inline sycl::event hetrd(const char* func_name, Func func, sycl::queue& queue,
     using cuDataType_A = typename CudaEquivalentType<T_A>::Type;
     using cuDataType_B = typename CudaEquivalentType<T_B>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1718,7 +1718,7 @@ inline sycl::event orgbr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1761,7 +1761,7 @@ inline sycl::event orgqr(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1803,7 +1803,7 @@ inline sycl::event orgtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1847,7 +1847,7 @@ inline sycl::event ormtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, ldc, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1908,7 +1908,7 @@ inline sycl::event ormqr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, ldc, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1954,7 +1954,7 @@ inline sycl::event potrf(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -1997,7 +1997,7 @@ inline sycl::event potri(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2082,7 +2082,7 @@ inline sycl::event syevd(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2127,7 +2127,7 @@ inline sycl::event sygvd(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, ldb, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2172,7 +2172,7 @@ inline sycl::event sytrd(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2217,7 +2217,7 @@ inline sycl::event sytrf(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
 
     // cuSolver legacy api does not accept 64-bit ints.
     // To get around the limitation.
@@ -2310,7 +2310,7 @@ inline sycl::event ungbr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2353,7 +2353,7 @@ inline sycl::event ungqr(const char* func_name, Func func, sycl::queue& queue, s
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, k, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2395,7 +2395,7 @@ inline sycl::event ungtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2453,7 +2453,7 @@ inline sycl::event unmqr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(n, lda, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
@@ -2501,7 +2501,7 @@ inline sycl::event unmtr(const char* func_name, Func func, sycl::queue& queue,
                          const std::vector<sycl::event>& dependencies) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     overflow_check(m, n, lda, ldc, scratchpad_size);
-    int* devInfo = (int*)malloc_device(sizeof(int), queue);
+    int* devInfo = create_devinfo(queue, __func__);
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
         for (int64_t i = 0; i < num_events; i++) {
