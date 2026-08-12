@@ -67,6 +67,13 @@ namespace oneapi {
 namespace math {
 namespace blas {
 namespace rocblas {
+
+// Row-major dgmm_batch maps to column-major by swapping the side and m/n.
+static inline side dgmm_flip_side(side left_right) {
+    return left_right == oneapi::math::side::left ? oneapi::math::side::right
+                                                  : oneapi::math::side::left;
+}
+
 namespace column_major {
 
 // Buffer APIs
@@ -797,11 +804,14 @@ DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, rocblas_zdgmm_strided_batc
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER_USM
 
+// flip_side lets the row-major layer reverse each group's side without writing to
+// the caller's left_right array, which the spec defines as an input parameter.
 template <typename Func, typename T>
 inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, int64_t* m,
                               int64_t* n, const T** a, int64_t* lda, const T** x, int64_t* incx,
                               T** c, int64_t* ldc, int64_t group_count, int64_t* group_size,
-                              const std::vector<sycl::event>& dependencies) {
+                              const std::vector<sycl::event>& dependencies,
+                              bool flip_side = false) {
     using rocDataType = typename RocEquivalentType<T>::Type;
 
     auto done = queue.submit([&](sycl::handler& cgh) {
@@ -815,9 +825,10 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, i
                 auto** a_ = reinterpret_cast<const rocDataType**>(a);
                 auto** x_ = reinterpret_cast<const rocDataType**>(x);
                 auto** c_ = reinterpret_cast<rocDataType**>(c);
-                rocblas_native_func(func, err, handle, get_rocblas_side_mode(left_right[i]), m[i],
-                                    n[i], a_ + offset, lda[i], x_ + offset, incx[i], c_ + offset,
-                                    ldc[i], group_size[i]);
+                const auto side_i = flip_side ? dgmm_flip_side(left_right[i]) : left_right[i];
+                rocblas_native_func(func, err, handle, get_rocblas_side_mode(side_i), m[i], n[i],
+                                    a_ + offset, lda[i], x_ + offset, incx[i], c_ + offset, ldc[i],
+                                    group_size[i]);
                 offset += group_size[i];
             }
         });
@@ -1504,11 +1515,8 @@ inline void dgmm_batch(Func func, sycl::queue& queue, side left_right, int64_t m
                        sycl::buffer<T, 1>& a, int64_t lda, int64_t stridea, sycl::buffer<T, 1>& x,
                        int64_t incx, int64_t stridex, sycl::buffer<T, 1>& c, int64_t ldc,
                        int64_t stridec, int64_t batch_size) {
-    auto new_side = left_right == oneapi::math::side::left ? oneapi::math::side::right
-                                                           : oneapi::math::side::left;
-
-    column_major::dgmm_batch(func, queue, new_side, n, m, a, lda, stridea, x, incx, stridex, c, ldc,
-                             stridec, batch_size);
+    column_major::dgmm_batch(func, queue, dgmm_flip_side(left_right), n, m, a, lda, stridea, x,
+                             incx, stridex, c, ldc, stridec, batch_size);
 }
 
 #define DGMM_STRIDED_BATCH_LAUNCHER(TYPE, ROCBLAS_ROUTINE)                                         \
@@ -1990,11 +1998,8 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side left_right, in
                               const T* a, int64_t lda, int64_t stridea, const T* x, int64_t incx,
                               int64_t stridex, T* c, int64_t ldc, int64_t stridec,
                               int64_t batch_size, const std::vector<sycl::event>& dependencies) {
-    auto new_side = left_right == oneapi::math::side::left ? oneapi::math::side::right
-                                                           : oneapi::math::side::left;
-
-    return column_major::dgmm_batch(func, queue, new_side, n, m, a, lda, stridea, x, incx, stridex,
-                                    c, ldc, stridec, batch_size, dependencies);
+    return column_major::dgmm_batch(func, queue, dgmm_flip_side(left_right), n, m, a, lda, stridea,
+                                    x, incx, stridex, c, ldc, stridec, batch_size, dependencies);
 }
 
 #define DGMM_STRIDED_BATCH_LAUNCHER_USM(TYPE, ROCBLAS_ROUTINE)                                   \
@@ -2018,14 +2023,8 @@ inline sycl::event dgmm_batch(Func func, sycl::queue& queue, side* left_right, i
                               int64_t* n, const T** a, int64_t* lda, const T** x, int64_t* incx,
                               T** c, int64_t* ldc, int64_t group_count, int64_t* group_size,
                               const std::vector<sycl::event>& dependencies) {
-    for (int64_t i = 0; i < group_count; i++) {
-        const auto new_side = left_right[i] == oneapi::math::side::left ? oneapi::math::side::right
-                                                                        : oneapi::math::side::left;
-        left_right[i] = new_side;
-    }
-
     return column_major::dgmm_batch(func, queue, left_right, n, m, a, lda, x, incx, c, ldc,
-                                    group_count, group_size, dependencies);
+                                    group_count, group_size, dependencies, /*flip_side=*/true);
 }
 
 #define DGMM_BATCH_LAUNCHER_USM(TYPE, ROCBLAS_ROUTINE)                                            \

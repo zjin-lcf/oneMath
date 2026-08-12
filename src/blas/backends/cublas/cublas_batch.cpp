@@ -25,6 +25,13 @@ namespace oneapi {
 namespace math {
 namespace blas {
 namespace cublas {
+
+// Row-major dgmm_batch maps to column-major by swapping the side and m/n.
+static inline side dgmm_flip_side(side left_right) {
+    return left_right == oneapi::math::side::left ? oneapi::math::side::right
+                                                  : oneapi::math::side::left;
+}
+
 namespace column_major {
 
 // Buffer APIs
@@ -594,13 +601,14 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
     return done;
 }
 
-#define DGMM_STRIDED_BATCH_LAUNCHER_USM(TYPE, CUBLAS_ROUTINE)                                       \
-    sycl::event dgmm_batch(sycl::queue& queue, side left_right, int64_t m, int64_t n,               \
-                           const TYPE* a, int64_t lda, int64_t stride_a, const TYPE* x,             \
-                           int64_t incx, int64_t stride_x, TYPE* c, int64_t ldc, int64_t stride_c,  \
-                           int64_t batch_size, const std::vector<sycl::event>& dependencies) {      \
-        return dgmm_batch(#CUBLAS_ROUTINE, CUBLAS_ROUTINE, queue, left_right, m, n, a, lda,         \
-                          stride_a, x, incx, stride_x, c, ldc, stride_c, batch_size, dependencies); \
+#define DGMM_STRIDED_BATCH_LAUNCHER_USM(TYPE, CUBLAS_ROUTINE)                                      \
+    sycl::event dgmm_batch(sycl::queue& queue, side left_right, int64_t m, int64_t n,              \
+                           const TYPE* a, int64_t lda, int64_t stride_a, const TYPE* x,            \
+                           int64_t incx, int64_t stride_x, TYPE* c, int64_t ldc, int64_t stride_c, \
+                           int64_t batch_size, const std::vector<sycl::event>& dependencies) {     \
+        return dgmm_batch(#CUBLAS_ROUTINE, CUBLAS_ROUTINE, queue, left_right, m, n, a, lda,        \
+                          stride_a, x, incx, stride_x, c, ldc, stride_c, batch_size,               \
+                          dependencies);                                                           \
     }
 
 DGMM_STRIDED_BATCH_LAUNCHER_USM(float, cublasSdgmm_64)
@@ -611,11 +619,14 @@ DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>, cublasZdgmm_64)
 #undef DGMM_STRIDED_BATCH_LAUNCHER_USM
 
 // USM group dgmm_batch: loop over groups and group members calling cublas<t>dgmm.
+// flip_side lets the row-major layer reverse each group's side without writing to
+// the caller's left_right array, which the spec defines as an input parameter.
 template <typename Func, typename T>
-inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& queue, side* left_right,
-                              int64_t* m, int64_t* n, const T** a, int64_t* lda, const T** x,
-                              int64_t* incx, T** c, int64_t* ldc, int64_t group_count,
-                              int64_t* groupsize, const std::vector<sycl::event>& dependencies) {
+inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& queue,
+                              side* left_right, int64_t* m, int64_t* n, const T** a, int64_t* lda,
+                              const T** x, int64_t* incx, T** c, int64_t* ldc, int64_t group_count,
+                              int64_t* groupsize, const std::vector<sycl::event>& dependencies,
+                              bool flip_side = false) {
     using cuDataType = typename CudaEquivalentType<T>::Type;
     auto done = queue.submit([&](sycl::handler& cgh) {
         int64_t num_events = dependencies.size();
@@ -627,7 +638,8 @@ inline sycl::event dgmm_batch(const char* func_name, Func func, sycl::queue& que
             cublasStatus_t err;
             int64_t offset = 0;
             for (int64_t i = 0; i < group_count; i++) {
-                auto mode = get_cublas_side_mode(left_right[i]);
+                auto mode =
+                    get_cublas_side_mode(flip_side ? dgmm_flip_side(left_right[i]) : left_right[i]);
                 for (int64_t j = 0; j < groupsize[i]; j++) {
                     auto a_ = reinterpret_cast<const cuDataType*>(a[offset + j]);
                     auto x_ = reinterpret_cast<const cuDataType*>(x[offset + j]);
@@ -1212,19 +1224,13 @@ void gemv_batch(sycl::queue& queue, transpose transa, int64_t m, int64_t n,
     throw unimplemented("blas", "gemv_batch", "for row_major layout");
 }
 
-// Row-major dgmm_batch maps to column-major by swapping the side and m/n.
-static inline side dgmm_flip_side(side left_right) {
-    return left_right == oneapi::math::side::left ? oneapi::math::side::right
-                                                  : oneapi::math::side::left;
-}
-
 #define DGMM_STRIDED_BATCH_LAUNCHER(TYPE)                                                          \
     void dgmm_batch(sycl::queue& queue, side left_right, int64_t m, int64_t n,                     \
                     sycl::buffer<TYPE, 1>& a, int64_t lda, int64_t stride_a,                       \
                     sycl::buffer<TYPE, 1>& x, int64_t incx, int64_t stride_x,                      \
                     sycl::buffer<TYPE, 1>& c, int64_t ldc, int64_t stride_c, int64_t batch_size) { \
-        column_major::dgmm_batch(queue, dgmm_flip_side(left_right), n, m, a, lda, stride_a, x,      \
-                                 incx, stride_x, c, ldc, stride_c, batch_size);                     \
+        column_major::dgmm_batch(queue, dgmm_flip_side(left_right), n, m, a, lda, stride_a, x,     \
+                                 incx, stride_x, c, ldc, stride_c, batch_size);                    \
     }
 
 DGMM_STRIDED_BATCH_LAUNCHER(float)
@@ -1563,14 +1569,14 @@ sycl::event gemv_batch(sycl::queue& queue, transpose* transa, int64_t* m, int64_
     throw unimplemented("blas", "gemv_batch", "for row_major layout");
 }
 
-#define DGMM_STRIDED_BATCH_LAUNCHER_USM(TYPE)                                                       \
-    sycl::event dgmm_batch(sycl::queue& queue, side left_right, int64_t m, int64_t n,               \
-                           const TYPE* a, int64_t lda, int64_t stride_a, const TYPE* x,             \
-                           int64_t incx, int64_t stride_x, TYPE* c, int64_t ldc, int64_t stride_c,  \
-                           int64_t batch_size, const std::vector<sycl::event>& dependencies) {      \
-        return column_major::dgmm_batch(queue, dgmm_flip_side(left_right), n, m, a, lda, stride_a,  \
-                                        x, incx, stride_x, c, ldc, stride_c, batch_size,            \
-                                        dependencies);                                              \
+#define DGMM_STRIDED_BATCH_LAUNCHER_USM(TYPE)                                                      \
+    sycl::event dgmm_batch(sycl::queue& queue, side left_right, int64_t m, int64_t n,              \
+                           const TYPE* a, int64_t lda, int64_t stride_a, const TYPE* x,            \
+                           int64_t incx, int64_t stride_x, TYPE* c, int64_t ldc, int64_t stride_c, \
+                           int64_t batch_size, const std::vector<sycl::event>& dependencies) {     \
+        return column_major::dgmm_batch(queue, dgmm_flip_side(left_right), n, m, a, lda, stride_a, \
+                                        x, incx, stride_x, c, ldc, stride_c, batch_size,           \
+                                        dependencies);                                             \
     }
 
 DGMM_STRIDED_BATCH_LAUNCHER_USM(float)
@@ -1580,21 +1586,20 @@ DGMM_STRIDED_BATCH_LAUNCHER_USM(std::complex<double>)
 
 #undef DGMM_STRIDED_BATCH_LAUNCHER_USM
 
-#define DGMM_GROUP_BATCH_LAUNCHER_USM(TYPE)                                                      \
+#define DGMM_GROUP_BATCH_LAUNCHER_USM(TYPE, CUBLAS_ROUTINE)                                       \
     sycl::event dgmm_batch(sycl::queue& queue, side* left_right, int64_t* m, int64_t* n,          \
                            const TYPE** a, int64_t* lda, const TYPE** x, int64_t* incx, TYPE** c, \
                            int64_t* ldc, int64_t group_count, int64_t* groupsize,                 \
                            const std::vector<sycl::event>& dependencies) {                        \
-        for (int64_t i = 0; i < group_count; i++)                                                 \
-            left_right[i] = dgmm_flip_side(left_right[i]);                                         \
-        return column_major::dgmm_batch(queue, left_right, n, m, a, lda, x, incx, c, ldc,         \
-                                        group_count, groupsize, dependencies);                    \
+        return column_major::dgmm_batch(#CUBLAS_ROUTINE, CUBLAS_ROUTINE, queue, left_right, n, m, \
+                                        a, lda, x, incx, c, ldc, group_count, groupsize,          \
+                                        dependencies, /*flip_side=*/true);                        \
     }
 
-DGMM_GROUP_BATCH_LAUNCHER_USM(float)
-DGMM_GROUP_BATCH_LAUNCHER_USM(double)
-DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<float>)
-DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<double>)
+DGMM_GROUP_BATCH_LAUNCHER_USM(float, cublasSdgmm_64)
+DGMM_GROUP_BATCH_LAUNCHER_USM(double, cublasDdgmm_64)
+DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<float>, cublasCdgmm_64)
+DGMM_GROUP_BATCH_LAUNCHER_USM(std::complex<double>, cublasZdgmm_64)
 
 #undef DGMM_GROUP_BATCH_LAUNCHER_USM
 
