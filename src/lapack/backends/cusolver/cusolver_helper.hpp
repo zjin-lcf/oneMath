@@ -300,7 +300,9 @@ inline void get_cusolver_devinfo(sycl::queue& queue, sycl::buffer<int>& devInfo,
 inline void get_cusolver_devinfo(sycl::queue& queue, const int* devInfo,
                                  std::vector<int>& dev_info_) {
     queue.wait();
-    queue.memcpy(dev_info_.data(), devInfo, sizeof(int));
+    // The copy must complete before dev_info_ is read: callers inspect it as soon as this
+    // returns and then release devInfo, both of which race with an outstanding copy.
+    queue.memcpy(dev_info_.data(), devInfo, sizeof(int) * dev_info_.size()).wait();
 }
 
 template <typename DEVINFO_T>
