@@ -504,6 +504,101 @@ int int8_accumulation_error_model(device* dev, oneapi::math::layout layout) {
     return good;
 }
 
+// The rocBLAS int8-to-float fallback scales its int32 accumulator in a kernel of its own, and
+// launches it over a flat range because HIP cannot map every large multi-dimensional range onto
+// its grid. A large prime n keeps that flat launch covered.
+int int8_flat_range_large_prime(device* dev, oneapi::math::layout layout) {
+    auto exception_handler = [](exception_list exceptions) {
+        for (std::exception_ptr const& e : exceptions) {
+            try {
+                std::rethrow_exception(e);
+            }
+            catch (exception const& e) {
+                std::cout << "Caught asynchronous SYCL exception during GEMM_BATCH_STRIDE:\n"
+                          << e.what() << std::endl;
+                print_error_code(e);
+            }
+        }
+    };
+
+    queue main_queue(*dev, exception_handler);
+    context cxt = main_queue.get_context();
+    std::vector<event> dependencies;
+    const int64_t m = 3, n = 65537, k = 1, batch_size = 1;
+    const bool col = layout == oneapi::math::layout::col_major;
+    const int64_t lda = col ? m : k;
+    const int64_t ldb = col ? k : n;
+    const int64_t ldc = col ? m : n;
+    const int64_t stride_a = col ? lda * k : lda * m;
+    const int64_t stride_b = col ? ldb * n : ldb * k;
+    const int64_t stride_c = col ? ldc * n : ldc * m;
+
+    auto ua = usm_allocator<std::int8_t, usm::alloc::shared, 64>(cxt, *dev);
+    auto uc = usm_allocator<float, usm::alloc::shared, 64>(cxt, *dev);
+    vector<std::int8_t, decltype(ua)> A(stride_a, ua), B(stride_b, ua);
+    vector<float, decltype(uc)> C(stride_c, uc);
+    for (int64_t i = 0; i < m; ++i)
+        A[col ? i : i * lda] = std::int8_t(i + 1);
+    for (int64_t j = 0; j < n; ++j)
+        B[col ? j * ldb : j] = std::int8_t(j % 7 - 3);
+    std::fill(C.begin(), C.end(), -1.0f);
+
+    try {
+        event done;
+#ifdef CALL_RT_API
+        if (col) {
+            done = oneapi::math::blas::column_major::gemm_batch(
+                main_queue, oneapi::math::transpose::nontrans, oneapi::math::transpose::nontrans, m,
+                n, k, 1.0f, &A[0], lda, stride_a, &B[0], ldb, stride_b, 0.0f, &C[0], ldc, stride_c,
+                batch_size, dependencies);
+        }
+        else {
+            done = oneapi::math::blas::row_major::gemm_batch(
+                main_queue, oneapi::math::transpose::nontrans, oneapi::math::transpose::nontrans, m,
+                n, k, 1.0f, &A[0], lda, stride_a, &B[0], ldb, stride_b, 0.0f, &C[0], ldc, stride_c,
+                batch_size, dependencies);
+        }
+        done.wait_and_throw();
+#else
+        if (col) {
+            TEST_RUN_BLAS_CT_SELECT(main_queue, oneapi::math::blas::column_major::gemm_batch,
+                                    oneapi::math::transpose::nontrans,
+                                    oneapi::math::transpose::nontrans, m, n, k, 1.0f, &A[0], lda,
+                                    stride_a, &B[0], ldb, stride_b, 0.0f, &C[0], ldc, stride_c,
+                                    batch_size, dependencies);
+        }
+        else {
+            TEST_RUN_BLAS_CT_SELECT(main_queue, oneapi::math::blas::row_major::gemm_batch,
+                                    oneapi::math::transpose::nontrans,
+                                    oneapi::math::transpose::nontrans, m, n, k, 1.0f, &A[0], lda,
+                                    stride_a, &B[0], ldb, stride_b, 0.0f, &C[0], ldc, stride_c,
+                                    batch_size, dependencies);
+        }
+        main_queue.wait_and_throw();
+#endif
+    }
+    catch (const oneapi::math::unimplemented&) {
+        return test_skipped;
+    }
+    catch (const std::exception& error) {
+        std::cout << "Error raised during large-prime GEMM_BATCH_STRIDE:\n"
+                  << error.what() << std::endl;
+        return false;
+    }
+
+    for (int64_t j = 0; j < n; ++j)
+        for (int64_t i = 0; i < m; ++i) {
+            const int64_t index = col ? i + j * ldc : i * ldc + j;
+            const float expected = float((i + 1) * (j % 7 - 3));
+            if (C[index] != expected) {
+                std::cout << "Difference in entry (" << i << ',' << j << "): DPC++ " << C[index]
+                          << " vs. Reference " << expected << std::endl;
+                return false;
+            }
+        }
+    return true;
+}
+
 class GemmBatchStrideUsmTests
         : public ::testing::TestWithParam<std::tuple<sycl::device*, oneapi::math::layout>> {};
 
@@ -525,6 +620,11 @@ TEST_P(GemmBatchStrideUsmTests, Int8Int8SinglePrecision) {
 TEST_P(GemmBatchStrideUsmTests, Int8Int8SinglePrecisionErrorModel) {
     EXPECT_TRUEORSKIP(
         (int8_accumulation_error_model(std::get<0>(GetParam()), std::get<1>(GetParam()))));
+}
+
+TEST_P(GemmBatchStrideUsmTests, Int8Int8SinglePrecisionLargePrimeRange) {
+    EXPECT_TRUEORSKIP(
+        (int8_flat_range_large_prime(std::get<0>(GetParam()), std::get<1>(GetParam()))));
 }
 
 TEST_P(GemmBatchStrideUsmTests, Int8Int8Int32Precision) {
