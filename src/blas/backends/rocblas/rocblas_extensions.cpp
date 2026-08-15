@@ -31,9 +31,9 @@ namespace math {
 namespace blas {
 namespace rocblas {
 
-// This backend only ever runs on AMD devices, so the omatcopy2 kernels are
-// always built with the tile extents measured there.
-constexpr auto omatcopy2_target = omatcopy2_kernels::vendor::amd;
+// This backend only ever runs on AMD devices. The kernel dispatcher refines
+// this to the gfx90a or gfx942 table at run time when needed.
+constexpr auto omatcopy2_target = omatcopy2_kernels::target::amd;
 
 namespace column_major {
 

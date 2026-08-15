@@ -32,7 +32,9 @@
 
 #include <complex>
 #include <cstdint>
+#include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "oneapi/math/types.hpp"
@@ -50,42 +52,102 @@ namespace omatcopy2_kernels {
 // items: the load phase puts the lane index on the row extent and the store
 // phase puts it on the column extent, so `cols` sets how wide the stores are.
 //
-// Every variant below keeps the tile under 17 KB for every element type, which
-// leaves room for three resident groups even on CDNA1-CDNA3 (64 KB of local
-// memory per compute unit) and on the smaller NVIDIA parts (64 KB on Pascal
-// and Turing); CDNA4 has 160 KB and A100 has 164 KB.
+// Every variant below keeps the tile under 17 KB except the gfx90a
+// complex<double> strided tile, which uses 32.5 KB. CDNA1-CDNA3 have 64 KB of
+// local memory per compute unit; CDNA4 has 160 KB and A100 has 164 KB.
 
 /// The two backends that include this header are each built against a single
-/// vendor's runtime, so which tuning to apply is fixed at the call site rather
-/// than queried from the device.
-enum class vendor { nvidia, amd };
+/// vendor's runtime. gfx90a and gfx942 use architecture-specific tuning selected
+/// at run time within the AMD backend; other AMD architectures use gfx950
+/// tuning.
+enum class target { nvidia, amd, amd_gfx90a, amd_gfx942 };
+
+inline target get_amd_target(const sycl::device& device) {
+    static thread_local std::vector<std::pair<sycl::device, target>> cache;
+    for (const auto& cached : cache) {
+        if (cached.first == device) {
+            return cached.second;
+        }
+    }
+
+    target result = target::amd;
+#ifdef SYCL_EXT_ONEAPI_DEVICE_ARCHITECTURE
+    // This experimental query is non-const in older DPC++ releases.
+    auto query_device = device;
+    using architecture = sycl::ext::oneapi::experimental::architecture;
+    if (query_device.ext_oneapi_architecture_is(architecture::amd_gpu_gfx90a)) {
+        result = target::amd_gfx90a;
+    }
+    else if (query_device.ext_oneapi_architecture_is(architecture::amd_gpu_gfx942)) {
+        result = target::amd_gfx942;
+    }
+#endif
+    if (result == target::amd) {
+        // The DPC++ HIP adapter currently reports an unknown architecture
+        // through the extension above, and AdaptiveCpp does not expose it.
+        const auto name = device.get_info<sycl::info::device::name>();
+        if (name.find("MI210") != std::string::npos || name.find("MI250") != std::string::npos ||
+            name.find("gfx90a") != std::string::npos) {
+            result = target::amd_gfx90a;
+        }
+        else if (name.find("MI300") != std::string::npos ||
+                 name.find("MI308") != std::string::npos ||
+                 name.find("MI325") != std::string::npos ||
+                 name.find("gfx942") != std::string::npos) {
+            result = target::amd_gfx942;
+        }
+    }
+    cache.emplace_back(device, result);
+    return result;
+}
 
 /// Unit element strides: both global accesses are contiguous, so the two
 /// phases want the same width and a square tile is best.
 ///
 /// Measured on gfx950 and on an A100, which agree to within 0.4% on every
-/// element type, so one table serves both.
-template <typename T>
+/// element type. gfx942 retains those choices except for 16-byte elements,
+/// where halving the column extent gains about 2.4%.
+template <typename T, target Target>
 struct unit_stride_geometry {
     static constexpr int rows = sizeof(T) <= 4 ? 64 : 32;
-    static constexpr int cols = rows;
+    static constexpr int cols = Target == target::amd_gfx942 && sizeof(T) == 16 ? 16 : rows;
     static constexpr int block = 8;
 };
 
 /// Real element strides: neither access is contiguous, so widening the stores
 /// buys nothing and a taller tile amortises the per-tile overhead instead.
 ///
-/// Here the two vendors disagree, so the tables are separate. Both were
-/// measured over strides 1-4 and sizes from 64 to 8192 square.
-template <typename T, vendor Vendor>
+/// The vendors disagree, and gfx90a and gfx942 also require targeted
+/// architecture-specific choices, so these tables are separate.
+template <typename T, target Target>
 struct strided_geometry;
 
 /// Measured on gfx950.
 template <typename T>
-struct strided_geometry<T, vendor::amd> {
+struct strided_geometry<T, target::amd> {
     static constexpr int rows = sizeof(T) <= 8 ? 64 : 32;
     static constexpr int cols = 32;
     static constexpr int block = sizeof(T) == 8 ? 16 : 8;
+};
+
+/// Measured on two MI210 devices. Sixteen-byte elements prefer a 64 x 32 tile
+/// and a 256-item work-group, gaining about 8.5% over the gfx950 choice. Other
+/// element types retain the gfx950 geometry.
+template <typename T>
+struct strided_geometry<T, target::amd_gfx90a> {
+    static constexpr int rows = 64;
+    static constexpr int cols = 32;
+    static constexpr int block = sizeof(T) == 8 ? 16 : (sizeof(T) == 16 ? 4 : 8);
+};
+
+/// Measured on gfx942. Eight-byte elements prefer a 32 x 8 tile and a
+/// 256-item work-group; the gfx950 choice uses 1024 items. Float and 16-byte
+/// elements retain the gfx950 geometry.
+template <typename T>
+struct strided_geometry<T, target::amd_gfx942> {
+    static constexpr int rows = sizeof(T) <= 4 ? 64 : 32;
+    static constexpr int cols = sizeof(T) == 8 ? 8 : 32;
+    static constexpr int block = 8;
 };
 
 /// Measured on an A100. The wave64 table wants 1024-item groups for the 8-byte
@@ -95,7 +157,7 @@ struct strided_geometry<T, vendor::amd> {
 /// the copy is not already bounded by main memory. The narrower tile for
 /// 16-byte types costs 0.5% and keeps every variant inside the same 17 KB.
 template <typename T>
-struct strided_geometry<T, vendor::nvidia> {
+struct strided_geometry<T, target::nvidia> {
     static constexpr int rows = 64;
     static constexpr int cols = sizeof(T) <= 8 ? 32 : 16;
     static constexpr int block = 4;
@@ -192,21 +254,41 @@ void launch_trans(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T al
 
 /// Picks the tile shape from the strides, which decide whether the global
 /// accesses are contiguous.
-template <typename T, vendor Vendor, typename AccessorA, typename AccessorB>
+template <typename T, target Target, typename AccessorA, typename AccessorB>
 void launch_trans_dispatch(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T alpha,
                            bool do_conj, AccessorA a, int64_t lda, int64_t stridea, AccessorB b,
                            int64_t ldb, int64_t strideb) {
     if (stridea == 1 && strideb == 1) {
-        launch_trans<T, unit_stride_geometry<T>>(cgh, logical_m, logical_n, alpha, do_conj, a, lda,
-                                                 stridea, b, ldb, strideb);
+        launch_trans<T, unit_stride_geometry<T, Target>>(cgh, logical_m, logical_n, alpha, do_conj,
+                                                         a, lda, stridea, b, ldb, strideb);
     }
     else {
-        launch_trans<T, strided_geometry<T, Vendor>>(cgh, logical_m, logical_n, alpha, do_conj, a,
+        launch_trans<T, strided_geometry<T, Target>>(cgh, logical_m, logical_n, alpha, do_conj, a,
                                                      lda, stridea, b, ldb, strideb);
     }
 }
 
-template <vendor Vendor, typename T>
+template <typename T, target Target, typename AccessorA, typename AccessorB>
+void launch_trans_for_device(sycl::handler& cgh, target device_target, int64_t logical_m,
+                             int64_t logical_n, T alpha, bool do_conj, AccessorA a, int64_t lda,
+                             int64_t stridea, AccessorB b, int64_t ldb, int64_t strideb) {
+    if constexpr (Target == target::amd) {
+        if (device_target == target::amd_gfx90a) {
+            launch_trans_dispatch<T, target::amd_gfx90a>(cgh, logical_m, logical_n, alpha, do_conj,
+                                                         a, lda, stridea, b, ldb, strideb);
+            return;
+        }
+        if (device_target == target::amd_gfx942) {
+            launch_trans_dispatch<T, target::amd_gfx942>(cgh, logical_m, logical_n, alpha, do_conj,
+                                                         a, lda, stridea, b, ldb, strideb);
+            return;
+        }
+    }
+    launch_trans_dispatch<T, Target>(cgh, logical_m, logical_n, alpha, do_conj, a, lda, stridea, b,
+                                     ldb, strideb);
+}
+
+template <target Target, typename T>
 sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
                           oneapi::math::transpose trans, int64_t m, int64_t n, T alpha, const T* a,
                           int64_t lda, int64_t stridea, T* b, int64_t ldb, int64_t strideb,
@@ -224,11 +306,13 @@ sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
         });
     }
 
+    const target device_target =
+        do_trans && Target == target::amd ? get_amd_target(queue.get_device()) : Target;
     return queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(dependencies);
         if (do_trans) {
-            launch_trans_dispatch<T, Vendor>(cgh, logical_m, logical_n, alpha, do_conj, a, lda,
-                                             stridea, b, ldb, strideb);
+            launch_trans_for_device<T, Target>(cgh, device_target, logical_m, logical_n, alpha,
+                                               do_conj, a, lda, stridea, b, ldb, strideb);
         }
         else {
             launch_nontrans<T>(cgh, logical_m, logical_n, alpha, a, lda, stridea, b, ldb, strideb);
@@ -236,7 +320,7 @@ sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
     });
 }
 
-template <vendor Vendor, typename T>
+template <target Target, typename T>
 void omatcopy2_buffer(sycl::queue& queue, oneapi::math::layout layout,
                       oneapi::math::transpose trans, int64_t m, int64_t n, T alpha,
                       sycl::buffer<T, 1>& a, int64_t lda, int64_t stridea, sycl::buffer<T, 1>& b,
@@ -251,13 +335,15 @@ void omatcopy2_buffer(sycl::queue& queue, oneapi::math::layout layout,
         return;
     }
 
+    const target device_target =
+        do_trans && Target == target::amd ? get_amd_target(queue.get_device()) : Target;
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read>(cgh);
         // Strided writes skip elements, so the untouched ones must be preserved.
         auto b_acc = b.template get_access<sycl::access::mode::read_write>(cgh);
         if (do_trans) {
-            launch_trans_dispatch<T, Vendor>(cgh, logical_m, logical_n, alpha, do_conj, a_acc, lda,
-                                             stridea, b_acc, ldb, strideb);
+            launch_trans_for_device<T, Target>(cgh, device_target, logical_m, logical_n, alpha,
+                                               do_conj, a_acc, lda, stridea, b_acc, ldb, strideb);
         }
         else {
             launch_nontrans<T>(cgh, logical_m, logical_n, alpha, a_acc, lda, stridea, b_acc, ldb,

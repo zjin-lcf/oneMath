@@ -29,7 +29,7 @@ namespace cublas {
 
 // This backend only ever runs on NVIDIA devices, so the omatcopy2 kernels are
 // always built with the tile extents measured there.
-constexpr auto omatcopy2_target = omatcopy2_kernels::vendor::nvidia;
+constexpr auto omatcopy2_target = omatcopy2_kernels::target::nvidia;
 
 namespace column_major {
 
