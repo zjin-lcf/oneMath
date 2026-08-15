@@ -463,7 +463,8 @@ int int8_accumulation_error_model(device* dev, oneapi::math::layout layout) {
                 const double model_bound =
                     eps * (std::abs(double(alpha)) * double(abs_sum) +
                            std::abs(double(beta) * double(C_in[idx])) + std::abs(expected));
-                worst_model_usage = std::max(worst_model_usage, error / model_bound);
+                worst_model_usage =
+                    std::max(worst_model_usage, model_bound > 0.0 ? error / model_bound : 0.0);
                 worst_absolute_usage = std::max(worst_absolute_usage, error / absolute_bound);
                 if (error > model_bound)
                     good = false;
