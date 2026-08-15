@@ -50,13 +50,21 @@ namespace omatcopy2_kernels {
 // items: the load phase puts the lane index on the row extent and the store
 // phase puts it on the column extent, so `cols` sets how wide the stores are.
 //
-// Both variants below keep the tile under 17 KB for every element type, which
+// Every variant below keeps the tile under 17 KB for every element type, which
 // leaves room for three resident groups even on CDNA1-CDNA3 (64 KB of local
-// memory per compute unit); CDNA4 has 160 KB. Extents were measured on gfx950
-// over strides 1-4 and sizes from 64 to 8192 square.
+// memory per compute unit) and on the smaller NVIDIA parts (64 KB on Pascal
+// and Turing); CDNA4 has 160 KB and A100 has 164 KB.
+
+/// The two backends that include this header are each built against a single
+/// vendor's runtime, so which tuning to apply is fixed at the call site rather
+/// than queried from the device.
+enum class vendor { nvidia, amd };
 
 /// Unit element strides: both global accesses are contiguous, so the two
 /// phases want the same width and a square tile is best.
+///
+/// Measured on gfx950 and on an A100, which agree to within 0.4% on every
+/// element type, so one table serves both.
 template <typename T>
 struct unit_stride_geometry {
     static constexpr int rows = sizeof(T) <= 4 ? 64 : 32;
@@ -66,11 +74,31 @@ struct unit_stride_geometry {
 
 /// Real element strides: neither access is contiguous, so widening the stores
 /// buys nothing and a taller tile amortises the per-tile overhead instead.
+///
+/// Here the two vendors disagree, so the tables are separate. Both were
+/// measured over strides 1-4 and sizes from 64 to 8192 square.
+template <typename T, vendor Vendor>
+struct strided_geometry;
+
+/// Measured on gfx950.
 template <typename T>
-struct strided_geometry {
+struct strided_geometry<T, vendor::amd> {
     static constexpr int rows = sizeof(T) <= 8 ? 64 : 32;
     static constexpr int cols = 32;
     static constexpr int block = sizeof(T) == 8 ? 16 : 8;
+};
+
+/// Measured on an A100. The wave64 table wants 1024-item groups for the 8-byte
+/// types, which is the whole of an SM's thread budget on NVIDIA and leaves only
+/// two groups resident; 256 items instead is worth 4% on `double` and 2% on
+/// `complex<float>` overall, and 7% and 5% once the matrices fit in L2, where
+/// the copy is not already bounded by main memory. The narrower tile for
+/// 16-byte types costs 0.5% and keeps every variant inside the same 17 KB.
+template <typename T>
+struct strided_geometry<T, vendor::nvidia> {
+    static constexpr int rows = 64;
+    static constexpr int cols = sizeof(T) <= 8 ? 32 : 16;
+    static constexpr int block = 4;
 };
 
 template <typename T>
@@ -164,7 +192,7 @@ void launch_trans(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T al
 
 /// Picks the tile shape from the strides, which decide whether the global
 /// accesses are contiguous.
-template <typename T, typename AccessorA, typename AccessorB>
+template <typename T, vendor Vendor, typename AccessorA, typename AccessorB>
 void launch_trans_dispatch(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T alpha,
                            bool do_conj, AccessorA a, int64_t lda, int64_t stridea, AccessorB b,
                            int64_t ldb, int64_t strideb) {
@@ -173,12 +201,12 @@ void launch_trans_dispatch(sycl::handler& cgh, int64_t logical_m, int64_t logica
                                                  stridea, b, ldb, strideb);
     }
     else {
-        launch_trans<T, strided_geometry<T>>(cgh, logical_m, logical_n, alpha, do_conj, a, lda,
-                                             stridea, b, ldb, strideb);
+        launch_trans<T, strided_geometry<T, Vendor>>(cgh, logical_m, logical_n, alpha, do_conj, a,
+                                                     lda, stridea, b, ldb, strideb);
     }
 }
 
-template <typename T>
+template <vendor Vendor, typename T>
 sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
                           oneapi::math::transpose trans, int64_t m, int64_t n, T alpha, const T* a,
                           int64_t lda, int64_t stridea, T* b, int64_t ldb, int64_t strideb,
@@ -199,8 +227,8 @@ sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
     return queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(dependencies);
         if (do_trans) {
-            launch_trans_dispatch<T>(cgh, logical_m, logical_n, alpha, do_conj, a, lda, stridea, b,
-                                     ldb, strideb);
+            launch_trans_dispatch<T, Vendor>(cgh, logical_m, logical_n, alpha, do_conj, a, lda,
+                                             stridea, b, ldb, strideb);
         }
         else {
             launch_nontrans<T>(cgh, logical_m, logical_n, alpha, a, lda, stridea, b, ldb, strideb);
@@ -208,7 +236,7 @@ sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
     });
 }
 
-template <typename T>
+template <vendor Vendor, typename T>
 void omatcopy2_buffer(sycl::queue& queue, oneapi::math::layout layout,
                       oneapi::math::transpose trans, int64_t m, int64_t n, T alpha,
                       sycl::buffer<T, 1>& a, int64_t lda, int64_t stridea, sycl::buffer<T, 1>& b,
@@ -228,8 +256,8 @@ void omatcopy2_buffer(sycl::queue& queue, oneapi::math::layout layout,
         // Strided writes skip elements, so the untouched ones must be preserved.
         auto b_acc = b.template get_access<sycl::access::mode::read_write>(cgh);
         if (do_trans) {
-            launch_trans_dispatch<T>(cgh, logical_m, logical_n, alpha, do_conj, a_acc, lda, stridea,
-                                     b_acc, ldb, strideb);
+            launch_trans_dispatch<T, Vendor>(cgh, logical_m, logical_n, alpha, do_conj, a_acc, lda,
+                                             stridea, b_acc, ldb, strideb);
         }
         else {
             launch_nontrans<T>(cgh, logical_m, logical_n, alpha, a_acc, lda, stridea, b_acc, ldb,

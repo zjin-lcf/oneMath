@@ -30,6 +30,11 @@ namespace oneapi {
 namespace math {
 namespace blas {
 namespace rocblas {
+
+// This backend only ever runs on AMD devices, so the omatcopy2 kernels are
+// always built with the tile extents measured there.
+constexpr auto omatcopy2_target = omatcopy2_kernels::vendor::amd;
+
 namespace column_major {
 
 // Buffer APIs
@@ -136,12 +141,13 @@ OMATCOPY_LAUNCHER(std::complex<double>, rocblas_zgeam)
 // stream synchronize, whereas these kernels are plain asynchronous SYCL. On
 // gfx950 the kernels beat the geam path by 37-77% even when the caller waits
 // after every call, and by more when calls can overlap.
-#define OMATCOPY2_LAUNCHER(TYPE)                                                              \
-    void omatcopy2(sycl::queue& queue, transpose trans, int64_t m, int64_t n, TYPE alpha,     \
-                   sycl::buffer<TYPE, 1>& a, int64_t lda, int64_t stridea,                    \
-                   sycl::buffer<TYPE, 1>& b, int64_t ldb, int64_t strideb) {                  \
-        omatcopy2_kernels::omatcopy2_buffer(queue, oneapi::math::layout::col_major, trans, m, \
-                                            n, alpha, a, lda, stridea, b, ldb, strideb);      \
+#define OMATCOPY2_LAUNCHER(TYPE)                                                                 \
+    void omatcopy2(sycl::queue& queue, transpose trans, int64_t m, int64_t n, TYPE alpha,        \
+                   sycl::buffer<TYPE, 1>& a, int64_t lda, int64_t stridea,                       \
+                   sycl::buffer<TYPE, 1>& b, int64_t ldb, int64_t strideb) {                     \
+        omatcopy2_kernels::omatcopy2_buffer<omatcopy2_target>(                                   \
+            queue, oneapi::math::layout::col_major, trans, m, n, alpha, a, lda, stridea, b, ldb, \
+            strideb);                                                                            \
     }
 
 OMATCOPY2_LAUNCHER(float)
@@ -322,9 +328,9 @@ OMATCOPY_LAUNCHER_USM(std::complex<double>, rocblas_zgeam)
     sycl::event omatcopy2(sycl::queue& queue, transpose trans, int64_t m, int64_t n, TYPE alpha, \
                           const TYPE* a, int64_t lda, int64_t stridea, TYPE* b, int64_t ldb,     \
                           int64_t strideb, const std::vector<sycl::event>& dependencies) {       \
-        return omatcopy2_kernels::omatcopy2_usm(queue, oneapi::math::layout::col_major, trans, m, \
-                                                n, alpha, a, lda, stridea, b, ldb, strideb,      \
-                                                dependencies);                                   \
+        return omatcopy2_kernels::omatcopy2_usm<omatcopy2_target>(                               \
+            queue, oneapi::math::layout::col_major, trans, m, n, alpha, a, lda, stridea, b, ldb, \
+            strideb, dependencies);                                                              \
     }
 
 OMATCOPY2_LAUNCHER_USM(float)
@@ -483,12 +489,13 @@ OMATCOPY_LAUNCHER(std::complex<double>, rocblas_zgeam)
 #undef OMATCOPY_LAUNCHER
 
 // See the column-major overloads for why geam is not used at unit stride.
-#define OMATCOPY2_LAUNCHER(TYPE)                                                              \
-    void omatcopy2(sycl::queue& queue, transpose trans, int64_t m, int64_t n, TYPE alpha,     \
-                   sycl::buffer<TYPE, 1>& a, int64_t lda, int64_t stridea,                    \
-                   sycl::buffer<TYPE, 1>& b, int64_t ldb, int64_t strideb) {                  \
-        omatcopy2_kernels::omatcopy2_buffer(queue, oneapi::math::layout::row_major, trans, m, \
-                                            n, alpha, a, lda, stridea, b, ldb, strideb);      \
+#define OMATCOPY2_LAUNCHER(TYPE)                                                                 \
+    void omatcopy2(sycl::queue& queue, transpose trans, int64_t m, int64_t n, TYPE alpha,        \
+                   sycl::buffer<TYPE, 1>& a, int64_t lda, int64_t stridea,                       \
+                   sycl::buffer<TYPE, 1>& b, int64_t ldb, int64_t strideb) {                     \
+        omatcopy2_kernels::omatcopy2_buffer<omatcopy2_target>(                                   \
+            queue, oneapi::math::layout::row_major, trans, m, n, alpha, a, lda, stridea, b, ldb, \
+            strideb);                                                                            \
     }
 
 OMATCOPY2_LAUNCHER(float)
@@ -629,9 +636,9 @@ OMATCOPY_LAUNCHER_USM(std::complex<double>, rocblas_zgeam)
     sycl::event omatcopy2(sycl::queue& queue, transpose trans, int64_t m, int64_t n, TYPE alpha, \
                           const TYPE* a, int64_t lda, int64_t stridea, TYPE* b, int64_t ldb,     \
                           int64_t strideb, const std::vector<sycl::event>& dependencies) {       \
-        return omatcopy2_kernels::omatcopy2_usm(queue, oneapi::math::layout::row_major, trans, m, \
-                                                n, alpha, a, lda, stridea, b, ldb, strideb,      \
-                                                dependencies);                                   \
+        return omatcopy2_kernels::omatcopy2_usm<omatcopy2_target>(                               \
+            queue, oneapi::math::layout::row_major, trans, m, n, alpha, a, lda, stridea, b, ldb, \
+            strideb, dependencies);                                                              \
     }
 
 OMATCOPY2_LAUNCHER_USM(float)
