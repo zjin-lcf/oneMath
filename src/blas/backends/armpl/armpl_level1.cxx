@@ -138,6 +138,16 @@ DOT_LAUNCHER(float, float, ::cblas_sdot)
 DOT_LAUNCHER(double, double, ::cblas_ddot)
 DOT_LAUNCHER(float, double, ::cblas_dsdot)
 
+void dot(sycl::queue&, std::int64_t, sycl::buffer<sycl::half, 1>&, std::int64_t,
+         sycl::buffer<sycl::half, 1>&, std::int64_t, sycl::buffer<sycl::half, 1>&) {
+    throw unimplemented("blas", "dot", "for sycl::half");
+}
+
+void dot(sycl::queue&, std::int64_t, sycl::buffer<bfloat16, 1>&, std::int64_t,
+         sycl::buffer<bfloat16, 1>&, std::int64_t, sycl::buffer<bfloat16, 1>&) {
+    throw unimplemented("blas", "dot", "for bfloat16");
+}
+
 template <typename T, typename U, typename CBLAS_FUNC>
 void dotc(sycl::queue& queue, int64_t n, sycl::buffer<T, 1>& x, int64_t incx, sycl::buffer<T, 1>& y,
           int64_t incy, sycl::buffer<U, 1>& result, CBLAS_FUNC cblas_func) {
@@ -532,6 +542,16 @@ sycl::event dot(sycl::queue& queue, int64_t n, const T* x, int64_t incx, const T
 DOT_USM_LAUNCHER(float, float, ::cblas_sdot)
 DOT_USM_LAUNCHER(double, double, ::cblas_ddot)
 DOT_USM_LAUNCHER(float, double, ::cblas_dsdot)
+
+sycl::event dot(sycl::queue&, std::int64_t, const sycl::half*, std::int64_t, const sycl::half*,
+                std::int64_t, sycl::half*, const std::vector<sycl::event>&) {
+    throw unimplemented("blas", "dot", "for sycl::half");
+}
+
+sycl::event dot(sycl::queue&, std::int64_t, const bfloat16*, std::int64_t, const bfloat16*,
+                std::int64_t, bfloat16*, const std::vector<sycl::event>&) {
+    throw unimplemented("blas", "dot", "for bfloat16");
+}
 
 template <typename T, typename U, typename CBLAS_FUNC>
 sycl::event dotc(sycl::queue& queue, int64_t n, const T* x, int64_t incx, const T* y, int64_t incy,
