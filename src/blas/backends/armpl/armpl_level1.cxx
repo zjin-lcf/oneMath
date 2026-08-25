@@ -143,9 +143,23 @@ void dot(sycl::queue&, std::int64_t, sycl::buffer<sycl::half, 1>&, std::int64_t,
     throw unimplemented("blas", "dot", "for sycl::half");
 }
 
-void dot(sycl::queue&, std::int64_t, sycl::buffer<bfloat16, 1>&, std::int64_t,
-         sycl::buffer<bfloat16, 1>&, std::int64_t, sycl::buffer<bfloat16, 1>&) {
-    throw unimplemented("blas", "dot", "for bfloat16");
+void dot(sycl::queue& queue, std::int64_t n, sycl::buffer<bfloat16, 1>& x, std::int64_t incx,
+         sycl::buffer<bfloat16, 1>& y, std::int64_t incy, sycl::buffer<bfloat16, 1>& result) {
+#ifdef _ARMPL_BF16_INTERFACE
+    queue.submit([&](sycl::handler& cgh) {
+        auto accessor_x = x.get_access<sycl::access::mode::read>(cgh);
+        auto accessor_y = y.get_access<sycl::access::mode::read>(cgh);
+        auto accessor_result = result.get_access<sycl::access::mode::write>(cgh);
+        host_task<class armpl_kernel_sbdot>(cgh, [=]() {
+            // sbdot accumulates in fp32; bdot accumulates in bfloat16 and is too lossy.
+            accessor_result[0] = bfloat16(::cblas_sbdot(
+                n, reinterpret_cast<const armpl_bf16_t*>(accessor_x.GET_MULTI_PTR), incx,
+                reinterpret_cast<const armpl_bf16_t*>(accessor_y.GET_MULTI_PTR), incy));
+        });
+    });
+#else
+    throw unimplemented("blas", "dot", "for bfloat16 with ArmPL older than 26.07");
+#endif
 }
 
 template <typename T, typename U, typename CBLAS_FUNC>
@@ -548,9 +562,25 @@ sycl::event dot(sycl::queue&, std::int64_t, const sycl::half*, std::int64_t, con
     throw unimplemented("blas", "dot", "for sycl::half");
 }
 
-sycl::event dot(sycl::queue&, std::int64_t, const bfloat16*, std::int64_t, const bfloat16*,
-                std::int64_t, bfloat16*, const std::vector<sycl::event>&) {
-    throw unimplemented("blas", "dot", "for bfloat16");
+sycl::event dot(sycl::queue& queue, std::int64_t n, const bfloat16* x, std::int64_t incx,
+                const bfloat16* y, std::int64_t incy, bfloat16* result,
+                const std::vector<sycl::event>& dependencies) {
+#ifdef _ARMPL_BF16_INTERFACE
+    auto done = queue.submit([&](sycl::handler& cgh) {
+        int64_t num_events = dependencies.size();
+        for (int64_t i = 0; i < num_events; ++i) {
+            cgh.depends_on(dependencies[i]);
+        }
+        host_task<class armpl_kernel_sbdot_usm>(cgh, [=]() {
+            // sbdot accumulates in fp32; bdot accumulates in bfloat16 and is too lossy.
+            result[0] = bfloat16(::cblas_sbdot(n, reinterpret_cast<const armpl_bf16_t*>(x), incx,
+                                               reinterpret_cast<const armpl_bf16_t*>(y), incy));
+        });
+    });
+    return done;
+#else
+    throw unimplemented("blas", "dot", "for bfloat16 with ArmPL older than 26.07");
+#endif
 }
 
 template <typename T, typename U, typename CBLAS_FUNC>
