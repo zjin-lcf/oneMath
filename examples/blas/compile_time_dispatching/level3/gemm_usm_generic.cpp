@@ -137,8 +137,8 @@ void run_gemm_example(const sycl::device& dev) {
     //
     // add oneapi::math::blas::gemm to execution queue using the generic backend
     gemm_done = oneapi::math::blas::column_major::gemm(
-        oneapi::math::backend_selector<oneapi::math::backend::generic>{ main_queue }, transA, transB,
-        m, n, k, alpha, dev_A, ldA, dev_B, ldB, beta, dev_C, ldC);
+        oneapi::math::backend_selector<oneapi::math::backend::generic>{ main_queue }, transA,
+        transB, m, n, k, alpha, dev_A, ldA, dev_B, ldB, beta, dev_C, ldC);
 
     // Wait until calculations are done
     gemm_done.wait_and_throw();
