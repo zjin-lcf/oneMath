@@ -452,11 +452,11 @@ inline void potrs_batch(const char* func_name, Func func, sycl::queue& queue,
             // Transform ptr and stride to list of ptr's
             cuDataType** a_batched = create_ptr_list_from_stride(a_, stride_a, batch_size);
 
-            // cusolverDnXpotrsBatched only solves for a single right hand side,
-            // so the columns of b are solved one after the other. The pointers
-            // of every column are uploaded before the first call as the native
-            // calls are not synchronised and would otherwise race with the
-            // device array being rewritten
+            // cusolverDnXpotrsBatched only solves one right hand side, so this
+            // requires one native batched call per column and its cost scales
+            // with nrhs. Upload every column's pointers before the first call:
+            // native calls are not synchronised and would otherwise race with
+            // a rewritten device pointer array.
             cuDataType** b_batched = (cuDataType**)malloc(sizeof(cuDataType*) * batch_size * nrhs);
             for (int64_t col = 0; col < nrhs; ++col)
                 for (int64_t i = 0; i < batch_size; ++i)
@@ -1365,11 +1365,11 @@ inline sycl::event potrs_batch(const char* func_name, Func func, sycl::queue& qu
             // Transform ptr and stride to list of ptr's
             cuDataType** a_batched = create_ptr_list_from_stride(a_, stride_a, batch_size);
 
-            // cusolverDnXpotrsBatched only solves for a single right hand side,
-            // so the columns of b are solved one after the other. The pointers
-            // of every column are uploaded before the first call as the native
-            // calls are not synchronised and would otherwise race with the
-            // device array being rewritten
+            // cusolverDnXpotrsBatched only solves one right hand side, so this
+            // requires one native batched call per column and its cost scales
+            // with nrhs. Upload every column's pointers before the first call:
+            // native calls are not synchronised and would otherwise race with
+            // a rewritten device pointer array.
             cuDataType** b_batched = (cuDataType**)malloc(sizeof(cuDataType*) * batch_size * nrhs);
             for (int64_t col = 0; col < nrhs; ++col)
                 for (int64_t i = 0; i < batch_size; ++i)
@@ -1451,11 +1451,11 @@ inline sycl::event potrs_batch(const char* func_name, Func func, sycl::queue& qu
     std::vector<T*> b_host(batch_size);
     queue.memcpy(b_host.data(), b, sizeof(T*) * batch_size).wait();
 
-    // cusolverDnXpotrsBatched only solves for a single right hand side, so the
-    // columns of b are solved one after the other. The pointers of every
-    // column are uploaded before the first call as the native calls are not
-    // synchronised and would otherwise race with the device array being
-    // rewritten
+    // cusolverDnXpotrsBatched only solves one right hand side, so this requires
+    // one native batched call per column and its cost scales with nrhs. Upload
+    // every column's pointers before the first call: native calls are not
+    // synchronised and would otherwise race with a rewritten device pointer
+    // array.
     std::vector<T*> b_columns(b_column_count);
     int64_t global_id = 0;
     int64_t column_offset = 0;
