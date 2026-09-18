@@ -622,6 +622,7 @@ TEST_P(GemmBatchStrideUsmTests, Int8Int8SinglePrecisionErrorModel) {
         (int8_accumulation_error_model(std::get<0>(GetParam()), std::get<1>(GetParam()))));
 }
 
+<<<<<<< HEAD
 TEST_P(GemmBatchStrideUsmTests, Int8Int8SinglePrecisionLargePrimeRange) {
     EXPECT_TRUEORSKIP(
         (int8_flat_range_large_prime(std::get<0>(GetParam()), std::get<1>(GetParam()))));
