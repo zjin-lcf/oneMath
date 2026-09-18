@@ -16,6 +16,8 @@
 *  limitations under the License.
 *
 **************************************************************************/
+#include <limits>
+
 #include "cusolver_helper.hpp"
 #include "cusolver_task.hpp"
 
@@ -45,6 +47,14 @@ inline bool gesvd_vectors_requested(oneapi::math::jobsvd jobu, oneapi::math::job
 // all n rows of V**H. Every other job needs no more than the leading min(m,n) rows.
 inline int gesvdj_economy_mode(oneapi::math::jobsvd jobvt) {
     return jobvt == oneapi::math::jobsvd::vectors ? 0 : 1;
+}
+
+template <typename T>
+inline void configure_gesvdj(gesvdjInfo_t params) {
+    cusolverStatus_t err;
+    CUSOLVER_ERROR_FUNC(cusolverDnXgesvdjSetTolerance, err, params,
+                        static_cast<double>(std::numeric_limits<T>::epsilon()));
+    CUSOLVER_ERROR_FUNC(cusolverDnXgesvdjSetMaxSweeps, err, params, 100);
 }
 
 inline void validate_gesvd_jobs(oneapi::math::jobsvd jobu, oneapi::math::jobsvd jobvt) {
@@ -316,7 +326,9 @@ inline void gesvd(const char* func_name, Func func, const char* funcj_name, Func
     if (m == 0 || n == 0)
         return;
 
-    // The QR-based gesvd only supports m >= n. Jacobi gesvd supports wide matrices.
+    // cuSOLVER's QR-based gesvd is used for m >= n, while its Jacobi gesvdj is used
+    // for m < n. Pin gesvdj's tolerance and sweep limit so wide-matrix convergence
+    // does not depend on the defaults of the installed CUDA release.
     if (m < n) {
         const bool vectors_requested = gesvd_vectors_requested(jobu, jobvt);
         const int econ = gesvdj_economy_mode(jobvt);
@@ -334,6 +346,7 @@ inline void gesvd(const char* func_name, Func func, const char* funcj_name, Func
         CUSOLVER_ERROR_FUNC(cusolverDnCreateGesvdjInfo, params_err, &params);
         // Keep params alive until devInfo confirms that the asynchronous native work completed.
         try {
+            configure_gesvdj<T_B>(params);
             queue.submit([&](sycl::handler& cgh) {
                 auto a_acc = a.template get_access<sycl::access::mode::read_write>(cgh);
                 auto s_acc = s.template get_access<sycl::access::mode::write>(cgh);
@@ -1631,7 +1644,9 @@ inline sycl::event gesvd(const char* func_name, Func func, const char* funcj_nam
         });
     }
 
-    // The QR-based gesvd only supports m >= n. Jacobi gesvd supports wide matrices.
+    // cuSOLVER's QR-based gesvd is used for m >= n, while its Jacobi gesvdj is used
+    // for m < n. Pin gesvdj's tolerance and sweep limit so wide-matrix convergence
+    // does not depend on the defaults of the installed CUDA release.
     if (m < n) {
         const bool vectors_requested = gesvd_vectors_requested(jobu, jobvt);
         const int econ = gesvdj_economy_mode(jobvt);
@@ -1650,6 +1665,7 @@ inline sycl::event gesvd(const char* func_name, Func func, const char* funcj_nam
         int* devInfo = nullptr;
         sycl::event done;
         try {
+            configure_gesvdj<T_B>(params);
             devInfo = (int*)malloc_device(sizeof(int), queue);
             done = queue.submit([&](sycl::handler& cgh) {
                 int64_t num_events = dependencies.size();
