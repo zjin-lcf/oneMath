@@ -1,21 +1,21 @@
-/***************************************************************************
-*  Copyright (C) Zheming Jin
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
+/*******************************************************************************
+* Copyright 2026 Intel Corporation
 *
-*      http://www.apache.org/licenses/LICENSE-2.0
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
 *
-*  For your convenience, a copy of the License has been included in this
-*  repository.
+* http://www.apache.org/licenses/LICENSE-2.0
 *
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions
+* and limitations under the License.
 *
-**************************************************************************/
+*
+* SPDX-License-Identifier: Apache-2.0
+*******************************************************************************/
 
 // Geometry sweep for the omatcopy2 transpose kernel. This file is not part of
 // the unit-test binary; compile it by hand when retuning tile extents:
@@ -262,12 +262,13 @@ void run_one(sycl::queue& queue, const problem& p, T* da, T* db, bool& verified,
     }
 }
 
-#define FOR_EACH_GEOMETRY(F)                                                                   \
-    F(16, 16, 4) F(16, 16, 8) F(16, 16, 16) F(32, 8, 8) F(32, 16, 4) F(32, 16, 8) F(32, 16, 16) \
-        F(32, 32, 4) F(32, 32, 8) F(32, 32, 16) F(32, 32, 32) F(64, 16, 4) F(64, 16, 8)        \
-            F(64, 16, 16) F(64, 32, 4) F(64, 32, 8) F(64, 32, 16) F(64, 64, 4) F(64, 64, 8)    \
-                F(64, 64, 16) F(128, 16, 4) F(128, 16, 8) F(128, 32, 4) F(128, 32, 8)          \
-                    F(128, 64, 4) F(128, 64, 8) F(128, 128, 4) F(128, 128, 8)
+#define FOR_EACH_GEOMETRY(F)                                                                    \
+    F(16, 16, 4)                                                                                \
+    F(16, 16, 8) F(16, 16, 16) F(32, 8, 8) F(32, 16, 4) F(32, 16, 8) F(32, 16, 16) F(32, 32, 4) \
+        F(32, 32, 8) F(32, 32, 16) F(32, 32, 32) F(64, 16, 4) F(64, 16, 8) F(64, 16, 16)        \
+            F(64, 32, 4) F(64, 32, 8) F(64, 32, 16) F(64, 64, 4) F(64, 64, 8) F(64, 64, 16)     \
+                F(128, 16, 4) F(128, 16, 8) F(128, 32, 4) F(128, 32, 8) F(128, 64, 4)           \
+                    F(128, 64, 8) F(128, 128, 4) F(128, 128, 8)
 
 template <typename T>
 void sweep_type(sycl::queue& queue, const std::vector<problem>& problems) {
@@ -303,10 +304,10 @@ int main(int argc, char** argv) {
     sycl::queue queue(sycl::gpu_selector_v);
     std::fprintf(stderr, "device: %s\n",
                  queue.get_device().get_info<sycl::info::device::name>().c_str());
-    std::fprintf(stderr, "local mem: %llu bytes, max wg: %llu\n",
-                 (unsigned long long)queue.get_device().get_info<sycl::info::device::local_mem_size>(),
-                 (unsigned long long)
-                     queue.get_device().get_info<sycl::info::device::max_work_group_size>());
+    std::fprintf(
+        stderr, "local mem: %llu bytes, max wg: %llu\n",
+        (unsigned long long)queue.get_device().get_info<sycl::info::device::local_mem_size>(),
+        (unsigned long long)queue.get_device().get_info<sycl::info::device::max_work_group_size>());
 
     const std::vector<std::pair<int64_t, int64_t>> strides = {
         { 1, 1 }, { 2, 2 }, { 3, 3 }, { 4, 4 }, { 1, 2 }
