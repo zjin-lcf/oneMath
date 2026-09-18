@@ -1,5 +1,5 @@
 /***************************************************************************
-*  Copyright (C) Codeplay Software Limited
+*  Copyright (C) Zheming Jin
 *  Licensed under the Apache License, Version 2.0 (the "License");
 *  you may not use this file except in compliance with the License.
 *  You may obtain a copy of the License at
@@ -20,6 +20,11 @@
 /**
  * @file omatcopy2_kernels.hpp : portable SYCL kernels implementing the
  * omatcopy2 element strides, which vendor geam entry points cannot express.
+ *
+ * Tile geometries were measured on real hardware: gfx950, two MI210 GPUs
+ * (gfx90a), gfx942, and an A100. To regenerate the tables, compile
+ * tests/unit_tests/blas/extensions/omatcopy2_tune.cpp against this header's
+ * kernel body (see the comments at the top of that file).
  */
 #ifndef _ONEMATH_BLAS_OMATCOPY2_KERNELS_HPP_
 #define _ONEMATH_BLAS_OMATCOPY2_KERNELS_HPP_
@@ -31,6 +36,7 @@
 #endif
 
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -54,7 +60,9 @@ namespace omatcopy2_kernels {
 //
 // Every variant below keeps the tile under 17 KB except the gfx90a
 // complex<double> strided tile, which uses 32.5 KB. CDNA1-CDNA3 have 64 KB of
-// local memory per compute unit; CDNA4 has 160 KB and A100 has 164 KB.
+// local memory per compute unit; CDNA4 has 160 KB and A100 has 164 KB. If the
+// selected tile exceeds the device's local_mem_size or max_work_group_size,
+// launch_trans_dispatch falls back to conservative_geometry.
 
 /// The two backends that include this header are each built against a single
 /// vendor's runtime. gfx90a and gfx942 use architecture-specific tuning selected
@@ -85,6 +93,8 @@ inline target get_amd_target(const sycl::device& device) {
     if (result == target::amd) {
         // The DPC++ HIP adapter currently reports an unknown architecture
         // through the extension above, and AdaptiveCpp does not expose it.
+        // A stale or unmatched name only selects a different tile; it cannot
+        // change the numerical result.
         const auto name = device.get_info<sycl::info::device::name>();
         if (name.find("MI210") != std::string::npos || name.find("MI250") != std::string::npos ||
             name.find("gfx90a") != std::string::npos) {
@@ -163,6 +173,34 @@ struct strided_geometry<T, target::nvidia> {
     static constexpr int block = 4;
 };
 
+/// Fallback when the preferred tile does not fit the device. 16 x 16 x 4 is
+/// 4.25 KB and 64 items, well inside typical local-memory and work-group
+/// limits, including older NVIDIA parts with 48 KB of shared memory.
+template <typename T>
+struct conservative_geometry {
+    static constexpr int rows = 16;
+    static constexpr int cols = 16;
+    static constexpr int block = 4;
+};
+
+template <typename Geom, typename T>
+constexpr std::size_t geometry_local_bytes() {
+    return static_cast<std::size_t>(Geom::cols) * (Geom::rows + 1) * sizeof(T);
+}
+
+template <typename Geom>
+constexpr std::size_t geometry_group_size() {
+    return static_cast<std::size_t>(Geom::block) * Geom::rows;
+}
+
+template <typename Geom, typename T>
+bool geometry_fits(const sycl::device& device) {
+    return geometry_local_bytes<Geom, T>() <=
+               device.get_info<sycl::info::device::local_mem_size>() &&
+           geometry_group_size<Geom>() <=
+               device.get_info<sycl::info::device::max_work_group_size>();
+}
+
 template <typename T>
 struct is_complex : std::false_type {};
 template <typename T>
@@ -238,6 +276,9 @@ void launch_trans(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T al
         item.barrier(sycl::access::fence_space::local_space);
 
         // Stores use only the first `cols` lanes; the rest of the group idles.
+        // A second store-phase mapping that kept every lane busy was not used:
+        // these geometries were chosen by end-to-end bandwidth, so a remap
+        // would have to beat that measurement to be worth the extra indexing.
         const int64_t store_c = tile_c + lx;
         if (lx < Geom::cols && store_c < logical_n) {
             for (int k = 0; k < Geom::rows; k += Geom::block) {
@@ -255,37 +296,52 @@ void launch_trans(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T al
 /// Picks the tile shape from the strides, which decide whether the global
 /// accesses are contiguous.
 template <typename T, target Target, typename AccessorA, typename AccessorB>
-void launch_trans_dispatch(sycl::handler& cgh, int64_t logical_m, int64_t logical_n, T alpha,
-                           bool do_conj, AccessorA a, int64_t lda, int64_t stridea, AccessorB b,
-                           int64_t ldb, int64_t strideb) {
+void launch_trans_dispatch(sycl::handler& cgh, const sycl::device& device, int64_t logical_m,
+                           int64_t logical_n, T alpha, bool do_conj, AccessorA a, int64_t lda,
+                           int64_t stridea, AccessorB b, int64_t ldb, int64_t strideb) {
     if (stridea == 1 && strideb == 1) {
-        launch_trans<T, unit_stride_geometry<T, Target>>(cgh, logical_m, logical_n, alpha, do_conj,
-                                                         a, lda, stridea, b, ldb, strideb);
+        using Pref = unit_stride_geometry<T, Target>;
+        if (geometry_fits<Pref, T>(device)) {
+            launch_trans<T, Pref>(cgh, logical_m, logical_n, alpha, do_conj, a, lda, stridea, b,
+                                  ldb, strideb);
+        }
+        else {
+            launch_trans<T, conservative_geometry<T>>(cgh, logical_m, logical_n, alpha, do_conj, a,
+                                                      lda, stridea, b, ldb, strideb);
+        }
     }
     else {
-        launch_trans<T, strided_geometry<T, Target>>(cgh, logical_m, logical_n, alpha, do_conj, a,
-                                                     lda, stridea, b, ldb, strideb);
+        using Pref = strided_geometry<T, Target>;
+        if (geometry_fits<Pref, T>(device)) {
+            launch_trans<T, Pref>(cgh, logical_m, logical_n, alpha, do_conj, a, lda, stridea, b,
+                                  ldb, strideb);
+        }
+        else {
+            launch_trans<T, conservative_geometry<T>>(cgh, logical_m, logical_n, alpha, do_conj, a,
+                                                      lda, stridea, b, ldb, strideb);
+        }
     }
 }
 
 template <typename T, target Target, typename AccessorA, typename AccessorB>
-void launch_trans_for_device(sycl::handler& cgh, target device_target, int64_t logical_m,
-                             int64_t logical_n, T alpha, bool do_conj, AccessorA a, int64_t lda,
-                             int64_t stridea, AccessorB b, int64_t ldb, int64_t strideb) {
+void launch_trans_for_device(sycl::handler& cgh, const sycl::device& device, target device_target,
+                             int64_t logical_m, int64_t logical_n, T alpha, bool do_conj,
+                             AccessorA a, int64_t lda, int64_t stridea, AccessorB b, int64_t ldb,
+                             int64_t strideb) {
     if constexpr (Target == target::amd) {
         if (device_target == target::amd_gfx90a) {
-            launch_trans_dispatch<T, target::amd_gfx90a>(cgh, logical_m, logical_n, alpha, do_conj,
-                                                         a, lda, stridea, b, ldb, strideb);
+            launch_trans_dispatch<T, target::amd_gfx90a>(cgh, device, logical_m, logical_n, alpha,
+                                                         do_conj, a, lda, stridea, b, ldb, strideb);
             return;
         }
         if (device_target == target::amd_gfx942) {
-            launch_trans_dispatch<T, target::amd_gfx942>(cgh, logical_m, logical_n, alpha, do_conj,
-                                                         a, lda, stridea, b, ldb, strideb);
+            launch_trans_dispatch<T, target::amd_gfx942>(cgh, device, logical_m, logical_n, alpha,
+                                                         do_conj, a, lda, stridea, b, ldb, strideb);
             return;
         }
     }
-    launch_trans_dispatch<T, Target>(cgh, logical_m, logical_n, alpha, do_conj, a, lda, stridea, b,
-                                     ldb, strideb);
+    launch_trans_dispatch<T, Target>(cgh, device, logical_m, logical_n, alpha, do_conj, a, lda,
+                                     stridea, b, ldb, strideb);
 }
 
 template <target Target, typename T>
@@ -306,13 +362,14 @@ sycl::event omatcopy2_usm(sycl::queue& queue, oneapi::math::layout layout,
         });
     }
 
+    const sycl::device device = queue.get_device();
     const target device_target =
-        do_trans && Target == target::amd ? get_amd_target(queue.get_device()) : Target;
+        do_trans && Target == target::amd ? get_amd_target(device) : Target;
     return queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(dependencies);
         if (do_trans) {
-            launch_trans_for_device<T, Target>(cgh, device_target, logical_m, logical_n, alpha,
-                                               do_conj, a, lda, stridea, b, ldb, strideb);
+            launch_trans_for_device<T, Target>(cgh, device, device_target, logical_m, logical_n,
+                                               alpha, do_conj, a, lda, stridea, b, ldb, strideb);
         }
         else {
             launch_nontrans<T>(cgh, logical_m, logical_n, alpha, a, lda, stridea, b, ldb, strideb);
@@ -335,15 +392,17 @@ void omatcopy2_buffer(sycl::queue& queue, oneapi::math::layout layout,
         return;
     }
 
+    const sycl::device device = queue.get_device();
     const target device_target =
-        do_trans && Target == target::amd ? get_amd_target(queue.get_device()) : Target;
+        do_trans && Target == target::amd ? get_amd_target(device) : Target;
     queue.submit([&](sycl::handler& cgh) {
         auto a_acc = a.template get_access<sycl::access::mode::read>(cgh);
         // Strided writes skip elements, so the untouched ones must be preserved.
         auto b_acc = b.template get_access<sycl::access::mode::read_write>(cgh);
         if (do_trans) {
-            launch_trans_for_device<T, Target>(cgh, device_target, logical_m, logical_n, alpha,
-                                               do_conj, a_acc, lda, stridea, b_acc, ldb, strideb);
+            launch_trans_for_device<T, Target>(cgh, device, device_target, logical_m, logical_n,
+                                               alpha, do_conj, a_acc, lda, stridea, b_acc, ldb,
+                                               strideb);
         }
         else {
             launch_nontrans<T>(cgh, logical_m, logical_n, alpha, a_acc, lda, stridea, b_acc, ldb,
