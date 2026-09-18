@@ -81,7 +81,9 @@ inline void check_int8_float_nonnegative(const char* name, int64_t value) {
 // rocBLAS reaches int8 inputs only with an int32 output and compute type, so the int8-to-float
 // combination accumulates exactly in int32 and applies oneMath's float alpha and beta afterwards.
 // Every int8 magnitude is at most 128, so 128 * 128 bounds a single product and a larger k than
-// this would wrap the int32 accumulator rocBLAS requires.
+// this would wrap the int32 accumulator rocBLAS requires. cuBLAS accumulates this combination in
+// float and has no such ceiling, so the same call with k above this limit succeeds on NVIDIA and
+// is unimplemented here.
 inline void check_int8_float_accumulation_size(int64_t k) {
     constexpr int64_t max_product = 128 * 128;
     constexpr int64_t max_safe_k = std::numeric_limits<std::int32_t>::max() / max_product;
